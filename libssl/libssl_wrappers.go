@@ -8,10 +8,10 @@ type SSL_METHOD struct {
 	Inner C.GO_SSL_METHOD_PTR
 }
 
-func DefaultTLSMethod() (*SSL_METHOD, error) {
-	r := C.go_openssl_TLS_method()
+func DefaultTLSClientMethod() (*SSL_METHOD, error) {
+	r := C.go_openssl_TLS_client_method()
 	if r == nil {
-		return nil, newOpenSSLError("libssl: TLS_method")
+		return nil, newOpenSSLError("libssl: TLS_client_method")
 	}
 	return &SSL_METHOD{Inner: r}, nil
 }

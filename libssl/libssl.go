@@ -421,9 +421,9 @@ func caller(skip int) (file *C.char, line C.int) {
 // 	return nil
 // }
 
-// func CheckLeaks() {
-// 	C.go_openssl_do_leak_check()
-// }
+func CheckLeaks() {
+	C.go_openssl_do_leak_check()
+}
 
 // versionAtOrAbove returns true when
 // (vMajor, vMinor, vPatch) >= (major, minor, patch),

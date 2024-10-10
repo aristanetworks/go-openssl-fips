@@ -1,12 +1,10 @@
-package libssl_test
+package main
 
 import (
 	"fmt"
 	"net"
 	"os"
 	"runtime"
-	"testing"
-	"time"
 
 	"github.com/golang-fips/openssl/v2/libssl"
 )
@@ -46,41 +44,7 @@ func getVersion() string {
 	return "libssl.so"
 }
 
-func TestMain(m *testing.M) {
-	v := getVersion()
-	fmt.Printf("Using %s\n", v)
-	err := libssl.Init(v)
-	if err != nil {
-		// An error here could mean that this Linux distro does not have a supported OpenSSL version
-		// or that there is a bug in the Init code.
-		panic(err)
-	}
-	_ = libssl.SetFIPS(true) // Skip the error as we still want to run the tests on machines without FIPS support.
-	fmt.Println("OpenSSL version:", libssl.VersionText())
-	fmt.Println("FIPS enabled:", libssl.FIPS())
-	status := m.Run()
-	for range 5 {
-		// Run GC a few times to avoid false positives in leak detection.
-		runtime.GC()
-		// Sleep a bit to let the finalizers run.
-		time.Sleep(10 * time.Millisecond)
-	}
-	libssl.CheckLeaks()
-	os.Exit(status)
-}
-
-func TestCheckVersion(t *testing.T) {
-	v := getVersion()
-	exists, fips := libssl.CheckVersion(v)
-	if !exists {
-		t.Fatalf("OpenSSL version %q not found", v)
-	}
-	if want := libssl.FIPS(); want != fips {
-		t.Fatalf("FIPS mismatch: want %v, got %v", want, fips)
-	}
-}
-
-func TestSSL_connect(t *testing.T) {
+func main() {
 	v := getVersion()
 	err := libssl.Init(v)
 	if err != nil {
@@ -89,23 +53,23 @@ func TestSSL_connect(t *testing.T) {
 
 	method, err := libssl.DefaultTLSClientMethod()
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 
 	sslCtx, err := libssl.NewSSLCtx(method)
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 
 	ssl, err := libssl.NewSSL(sslCtx)
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 
 	// set up TCP connection, similar to default http.Client stack
 	conn, err := net.Dial("tcp", "example.com:443")
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 	defer conn.Close()
 
@@ -115,27 +79,26 @@ func TestSSL_connect(t *testing.T) {
 
 	// Set the fd to this TCP fd
 	if err := libssl.SetSSLFd(ssl, fd); err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 
 	// Create TLS connection
 	if err := libssl.SSLConnect(ssl); err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 
 	// Send a request over TLS
 	request := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
 	if err := libssl.SSLWrite(ssl, request); err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 
 	// Receive the response over TLS
 	resp, err := libssl.SSLRead(ssl, 1024)
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 
 	// fmt.Println("bytes read", bytesRead)
 	fmt.Println(string(resp))
-	libssl.CheckLeaks()
 }

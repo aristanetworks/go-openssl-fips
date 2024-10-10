@@ -56,7 +56,7 @@ go_openssl_fips_enabled(void* handle)
 // and assign them to their corresponding function pointer
 // defined in goopenssl.h.
 void
-go_libssl_load_functions(void* handle, unsigned int major, unsigned int minor, unsigned int patch)
+go_openssl_load_functions(void* handle, unsigned int major, unsigned int minor, unsigned int patch)
 {
 #define DEFINEFUNC_INTERNAL(name, func)                                                                         \
     _g_##name = dlsym(handle, func);                                                                            \
@@ -128,87 +128,87 @@ FOR_ALL_LIBSSL_FUNCTIONS
 #undef DEFINEFUNC_RENAMED_3_0
 }
 
-// static unsigned long
-// version_num(void* handle)
-// {
-//     unsigned long (*fn)(void);
-//     // OPENSSL_version_num is defined in OpenSSL 1.1.0 and 1.1.1.
-//     fn = (unsigned long (*)(void))dlsym(handle, "OpenSSL_version_num");
-//     if (fn != NULL)
-//         return fn();
+static unsigned long
+version_num(void* handle)
+{
+    unsigned long (*fn)(void);
+    // OPENSSL_version_num is defined in OpenSSL 1.1.0 and 1.1.1.
+    fn = (unsigned long (*)(void))dlsym(handle, "OpenSSL_version_num");
+    if (fn != NULL)
+        return fn();
 
-//     // SSLeay is defined in OpenSSL 1.0.2.
-//     fn = (unsigned long (*)(void))dlsym(handle, "SSLeay");
-//     if (fn != NULL)
-//         return fn();
+    // SSLeay is defined in OpenSSL 1.0.2.
+    fn = (unsigned long (*)(void))dlsym(handle, "SSLeay");
+    if (fn != NULL)
+        return fn();
 
-//     return 0;
-// }
+    return 0;
+}
 
-// int
-// go_openssl_version_major(void* handle)
-// {
-//     unsigned int (*fn)(void);
-//     // OPENSSL_version_major is supported since OpenSSL 3.
-//     fn = (unsigned int (*)(void))dlsym(handle, "OPENSSL_version_major");
-//     if (fn != NULL)
-//         return (int)fn();
+int
+go_openssl_version_major(void* handle)
+{
+    unsigned int (*fn)(void);
+    // OPENSSL_version_major is supported since OpenSSL 3.
+    fn = (unsigned int (*)(void))dlsym(handle, "OPENSSL_version_major");
+    if (fn != NULL)
+        return (int)fn();
 
-//     // If OPENSSL_version_major is not defined, try with OpenSSL 1 functions.
-//     unsigned long num = version_num(handle);
-//     if (num < 0x10000000L || num >= 0x20000000L)
-//         return -1;
+    // If OPENSSL_version_major is not defined, try with OpenSSL 1 functions.
+    unsigned long num = version_num(handle);
+    if (num < 0x10000000L || num >= 0x20000000L)
+        return -1;
 
-//     return 1;
-// }
+    return 1;
+}
 
-// int
-// go_openssl_version_minor(void* handle)
-// {
-//     unsigned int (*fn)(void);
-//     // OPENSSL_version_minor is supported since OpenSSL 3.
-//     fn = (unsigned int (*)(void))dlsym(handle, "OPENSSL_version_minor");
-//     if (fn != NULL)
-//         return (int)fn();
+int
+go_openssl_version_minor(void* handle)
+{
+    unsigned int (*fn)(void);
+    // OPENSSL_version_minor is supported since OpenSSL 3.
+    fn = (unsigned int (*)(void))dlsym(handle, "OPENSSL_version_minor");
+    if (fn != NULL)
+        return (int)fn();
 
-//     // If OPENSSL_version_minor is not defined, try with OpenSSL 1 functions.
-//     unsigned long num = version_num(handle);
-//     // OpenSSL version number follows this schema:
-//     // MNNFFPPS: major minor fix patch status.
-//     if (num < 0x10000000L || num >= 0x10200000L)
-//     {
-//         // We only support minor version 0 and 1,
-//         // so there is no need to implement an algorithm
-//         // that decodes the version number into individual components.
-//         return -1;
-//     }
+    // If OPENSSL_version_minor is not defined, try with OpenSSL 1 functions.
+    unsigned long num = version_num(handle);
+    // OpenSSL version number follows this schema:
+    // MNNFFPPS: major minor fix patch status.
+    if (num < 0x10000000L || num >= 0x10200000L)
+    {
+        // We only support minor version 0 and 1,
+        // so there is no need to implement an algorithm
+        // that decodes the version number into individual components.
+        return -1;
+    }
 
-//     if (num >= 0x10100000L)
-//         return 1;
+    if (num >= 0x10100000L)
+        return 1;
 
-//     return 0;
-// }
+    return 0;
+}
 
-// int
-// go_openssl_version_patch(void* handle)
-// {
-//     unsigned int (*fn)(void);
-//     // OPENSSL_version_patch is supported since OpenSSL 3.
-//     fn = (unsigned int (*)(void))dlsym(handle, "OPENSSL_version_patch");
-//     if (fn != NULL)
-//         return (int)fn();
+int
+go_openssl_version_patch(void* handle)
+{
+    unsigned int (*fn)(void);
+    // OPENSSL_version_patch is supported since OpenSSL 3.
+    fn = (unsigned int (*)(void))dlsym(handle, "OPENSSL_version_patch");
+    if (fn != NULL)
+        return (int)fn();
 
-//     // If OPENSSL_version_patch is not defined, try with OpenSSL 1 functions.
-//     unsigned long num = version_num(handle);
-//     // OpenSSL version number follows this schema:
-//     // MNNFFPPS: major minor fix patch status.
-//     if (num < 0x10000000L || num >= 0x10200000L)
-//     {
-//         // We only support minor version 0 and 1,
-//         // so there is no need to implement an algorithm
-//         // that decodes the version number into individual components.
-//         return -1;
-//     }
+    // If OPENSSL_version_patch is not defined, try with OpenSSL 1 functions.
+    unsigned long num = version_num(handle);
+    // OpenSSL version number follows this schema:
+    // MNNFFPPS: major minor fix patch status.
+    if (num < 0x10000000L || num >= 0x10200000L)
+    {
+        // We only support minor version 0 and 1,
+        // so there is no need to implement an algorithm
+        // that decodes the version number into individual components.
+        return -1;
+    }
 
-//     return (num >> 12) & 0xff;
-// }
+    return (num >> 12) & 0xff;
+}
