@@ -2,7 +2,52 @@ package libssl
 
 // #include "golibssl.h"
 import "C"
-import "unsafe"
+import (
+	"os"
+	"runtime"
+	"unsafe"
+)
+
+// getVersion returns the OpenSSL version to use for testing.
+func getVersion() string {
+	v := os.Getenv("GO_OPENSSL_VERSION_OVERRIDE")
+	if v != "" {
+		if runtime.GOOS == "linux" {
+			return "libssl.so." + v
+		}
+		return v
+	}
+	// Try to find a supported version of OpenSSL on the system.
+	// This is useful for local testing, where the user may not
+	// have GO_OPENSSL_VERSION_OVERRIDE set.
+	versions := []string{"3", "1.1.1", "1.1", "11", "111", "1.0.2", "1.0.0", "10"}
+	if runtime.GOOS == "windows" {
+		if runtime.GOARCH == "amd64" {
+			versions = []string{"libssl-3-x64", "libssl-3", "libssl-1_1-x64", "libssl-1_1", "libeay64", "libeay32"}
+		} else {
+			versions = []string{"libssl-3", "libssl-1_1", "libeay32"}
+		}
+	}
+	for _, v = range versions {
+		if runtime.GOOS == "windows" {
+			v += ".dll"
+		} else if runtime.GOOS == "darwin" {
+			v = "libssl." + v + ".dylib"
+		} else {
+			v = "libssl.so." + v
+		}
+		if ok, _ := CheckVersion(v); ok {
+			return v
+		}
+	}
+	return "libssl.so"
+}
+
+var Version string
+
+func init() {
+	Version = getVersion()
+}
 
 type SslMethod struct {
 	inner C.GO_SSL_METHOD_PTR
@@ -16,6 +61,9 @@ func NewTLSClientMethod() (*SslMethod, error) {
 	return &SslMethod{inner: r}, nil
 }
 
+// SslCtx uses a TLS method to establish an SSL connection. It initializes the list of ciphers, the
+// session cache setting, the callbacks, the keys and certificates and the options to their default
+// values.
 type SslCtx struct {
 	inner C.GO_SSL_CTX_PTR
 }
@@ -32,6 +80,8 @@ func SSLCtxFree(sslCtx *SslCtx) {
 	C.go_openssl_SSL_CTX_free(sslCtx.inner)
 }
 
+// Ssl holds data for a TLS connection. It inherits the settings of the underlying context ctx:
+// connection method, options, verification settings, timeout settings.
 type Ssl struct {
 	inner C.GO_SSL_PTR
 }
