@@ -87,7 +87,7 @@ func TestSSL_connect(t *testing.T) {
 		panic(err)
 	}
 
-	method, err := libssl.DefaultTLSClientMethod()
+	method, err := libssl.NewTLSClientMethod()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,11 +96,13 @@ func TestSSL_connect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer libssl.SSLCtxFree(sslCtx)
 
 	ssl, err := libssl.NewSSL(sslCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer libssl.SSLFree(ssl)
 
 	// set up TCP connection, similar to default http.Client stack
 	conn, err := net.Dial("tcp", "example.com:443")
