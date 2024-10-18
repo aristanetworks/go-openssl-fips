@@ -4,7 +4,9 @@ package libssl
 
 // #include "golibssl.h"
 import "C"
-import "errors"
+import (
+	"errors"
+)
 
 // opensslInit loads and initialize OpenSSL.
 // If successful, it returns the major and minor OpenSSL version
@@ -42,7 +44,7 @@ func opensslInit(file string) (major, minor, patch uint, err error) {
 	}
 
 	// Load the OpenSSL functions.
-	// See shims.go for the complete list of supported functions.
+	// See libssl_shim.h for the complete list of supported functions.
 	C.go_openssl_load_functions(handle, C.uint(major), C.uint(minor), C.uint(patch))
 
 	// Initialize OpenSSL.
