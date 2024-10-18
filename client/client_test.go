@@ -1,7 +1,10 @@
 package client_test
 
 import (
+	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -9,26 +12,105 @@ import (
 	"github.com/golang-fips/openssl/v2/client"
 )
 
-// TODO: should test against a local go https server
+type Item struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type ItemStore struct {
+	items map[string]Item
+}
+
+func NewItemStore() *ItemStore {
+	return &ItemStore{
+		items: make(map[string]Item),
+	}
+}
+
+func (s *ItemStore) GetItem(id string) (Item, bool) {
+	item, ok := s.items[id]
+	return item, ok
+}
+
+func (s *ItemStore) SetItem(item Item) {
+	s.items[item.ID] = item
+}
+
+type testServer struct {
+	server *httptest.Server
+	store  *ItemStore
+}
+
+func newTestServer() *testServer {
+	store := NewItemStore()
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /items/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		item, ok := store.GetItem(id)
+		if !ok {
+			http.Error(w, "Item not found", http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(item)
+	})
+
+	mux.HandleFunc("POST /items", func(w http.ResponseWriter, r *http.Request) {
+		var item Item
+		err := json.NewDecoder(r.Body).Decode(&item)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		store.SetItem(item)
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(item)
+	})
+
+	mux.HandleFunc("/status/{code}", func(w http.ResponseWriter, r *http.Request) {
+		code := r.PathValue("code")
+		statusCode := http.StatusOK
+		if code == "404" {
+			statusCode = http.StatusNotFound
+		}
+		w.WriteHeader(statusCode)
+	})
+
+	server := httptest.NewTLSServer(mux)
+
+	return &testServer{
+		server: server,
+		store:  store,
+	}
+}
+
+func (ts *testServer) Close() {
+	ts.server.Close()
+}
+
 func TestSSLClientGet(t *testing.T) {
-	client, err := client.NewSSLClient(10 * time.Second)
+	ts := newTestServer()
+	defer ts.Close()
+
+	sslClient, err := client.NewSSLClient(10 * time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	tests := []struct {
 		name           string
-		url            string
+		path           string
 		expectedStatus int
 	}{
-		{"Example.com", "https://example.com", 200},
-		{"Httpbin GET", "https://httpbin.org/get", 200},
-		{"Httpbin 404", "https://httpbin.org/status/404", 404},
+		{"Get Item", "/items/1", http.StatusOK},
+		{"Not Found", "/status/404", http.StatusNotFound},
 	}
+
+	ts.store.SetItem(Item{ID: "1", Name: "Test Item"})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := client.Get(tt.url)
+			resp, err := sslClient.Get(ts.server.URL + tt.path)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
@@ -47,24 +129,37 @@ func TestSSLClientGet(t *testing.T) {
 }
 
 func TestSSLClientPost(t *testing.T) {
-	client, err := client.NewSSLClient(10 * time.Second)
+	ts := newTestServer()
+	defer ts.Close()
+
+	sslClient, err := client.NewSSLClient(10 * time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Run("Httpbin POST", func(t *testing.T) {
-		resp, err := client.Post("https://httpbin.org/post", "application/json",
-			strings.NewReader(""))
+	t.Run("Create Item", func(t *testing.T) {
+		newItem := Item{ID: "2", Name: "New Item"}
+		jsonData, _ := json.Marshal(newItem)
+
+		resp, err := sslClient.Post(ts.server.URL+"/items", "application/json",
+			strings.NewReader(string(jsonData)))
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != 200 {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
-		if resp.Header.Get("content-type") != "application/json" {
-			t.Errorf("Content type not found in response")
+
+		var createdItem Item
+		err = json.NewDecoder(resp.Body).Decode(&createdItem)
+		if err != nil {
+			t.Fatalf("Failed to decode response body: %v", err)
+		}
+
+		if createdItem != newItem {
+			t.Errorf("Created item doesn't match: expected %v, got %v", newItem, createdItem)
 		}
 	})
 }

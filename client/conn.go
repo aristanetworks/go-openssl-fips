@@ -1,8 +1,8 @@
 package client
 
 import (
-	"fmt"
 	"net"
+	"net/url"
 	"time"
 
 	"github.com/golang-fips/openssl/v2/libssl"
@@ -18,8 +18,8 @@ type SSLConn struct {
 	fd int
 }
 
-// NewSSLConn creates a new SSL connection for the host on port 443.
-func NewSSLConn(host string, timeout time.Duration) (*SSLConn, error) {
+// NewSSLConn creates a new SSL connection to the host.
+func NewSSLConn(host *url.URL, timeout time.Duration) (*SSLConn, error) {
 	// set up TLS client connection context
 	method, err := libssl.NewTLSClientMethod()
 	if err != nil {
@@ -35,17 +35,16 @@ func NewSSLConn(host string, timeout time.Duration) (*SSLConn, error) {
 	}
 
 	// set up TCP connection, similar to default http.Client stack
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", host, 443))
+	conn, err := net.Dial("tcp", net.JoinHostPort(host.Hostname(), host.Port()))
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 
-	// Get file descriptor (this is a duplicate fd)
+	// Get the raw file descriptor (this is a duplicate fd)
 	file, _ := conn.(*net.TCPConn).File()
 	fd := int(file.Fd())
 
-	// Set the SSL fd to this TCP fd
+	// Set the SSL fd to the TCP fd dup
 	if err := libssl.SetSSLFd(ssl, fd); err != nil {
 		return nil, err
 	}
@@ -59,30 +58,30 @@ func NewSSLConn(host string, timeout time.Duration) (*SSLConn, error) {
 }
 
 // Read will read into bytes from the SSL connection.
-func (c *SSLConn) Read(b []byte) (n int, err error) {
-	// TODO: this should be SSLReadEx for OpenSSL >= 1.1.1
-	// TODO: this should loop to read chunks of response
-	resp, err := libssl.SSLRead(c.ssl, 1024)
+func (c *SSLConn) Read(b []byte) (int, error) {
+	r, n, err := libssl.SSLReadEx(c.ssl, len(b))
 	if err != nil {
-		return 0, err
+		if libssl.SSLGetError(c.ssl, 0) == libssl.SSL_ERROR_ZERO_RETURN {
+			// Server closed connection gracefully
+			return n, nil
+		}
+		return n, err
 	}
-	copy(b, resp)
+	copy(b, r[:n])
 	return len(b), nil
 }
 
 // Write will write bytes into the SSL connection.
-func (c *SSLConn) Write(b []byte) (n int, err error) {
-	// TODO: this should be SSLWriteEx for OpenSSL >= 1.1.1
-	if err := libssl.SSLWrite(c.ssl, b); err != nil {
-		return 0, err
-	}
-	return len(b), nil
+func (c *SSLConn) Write(b []byte) (int, error) {
+ 	return libssl.SSLWriteEx(c.ssl, b)
 }
 
 // Close will close the SSL connection.
 func (c *SSLConn) Close() error {
-	libssl.SSLCtxFree(c.sslCtx)
-	libssl.SSLFree(c.ssl)
-	// TODO: need to figure out how to close c.fd
+	if err := libssl.SSLShutdown(c.ssl); err != nil {
+		libssl.SSLCtxFree(c.sslCtx)
+		libssl.SSLFree(c.ssl)
+	}
+	// Closing the TCP conn will close the underlying fd
 	return c.conn.Close()
 }

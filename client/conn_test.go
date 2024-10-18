@@ -3,21 +3,28 @@ package client_test
 import (
 	"bufio"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/golang-fips/openssl/v2/client"
 )
 
-// TODO: should test against a local go https server
 func TestSSLConn(t *testing.T) {
-	conn, err := client.NewSSLConn("httpbin.org", 10)
+	ts := newTestServer()
+	defer ts.Close()
+
+	// Add a test item
+	ts.store.SetItem(Item{ID: "1", Name: "Test Item"})
+
+	host, _ := url.Parse(ts.server.URL)
+	conn, err := client.NewSSLConn(host, 10)
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
 	}
 	defer conn.Close()
 
-	request := "GET /get HTTP/1.1\r\nHost: httpbin.org\r\n\r\n"
+	request := fmt.Sprintf("GET /items/1 HTTP/1.1\r\nHost: %s\r\n\r\n", host.Hostname())
 	_, err = conn.Write([]byte(request))
 	if err != nil {
 		t.Fatalf("Failed to write request: %v", err)

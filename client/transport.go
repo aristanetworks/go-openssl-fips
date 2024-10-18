@@ -7,14 +7,14 @@ import (
 	"time"
 )
 
-// SSLTransport is used for piping requests to an openssl s_client subprocess proxy.
+// SSLTransport sends the request over an SSLConn.
 type SSLTransport struct {
 	Timeout time.Duration
 }
 
 // RoundTrip is used to do a single HTTP transaction using openssl.
 func (t *SSLTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	conn, err := NewSSLConn(req.URL.Host, t.Timeout)
+	conn, err := NewSSLConn(req.URL, t.Timeout)
 	if err != nil {
 		return nil, err
 	}
