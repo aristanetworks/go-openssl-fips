@@ -8,6 +8,7 @@ import "C"
 import (
 	"encoding/binary"
 	"errors"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -27,6 +28,39 @@ var (
 )
 
 var nativeEndian binary.ByteOrder
+
+// getVersion returns the OpenSSL version to use for testing.
+func getVersion() string {
+	v := os.Getenv("GO_OPENSSL_VERSION_OVERRIDE")
+	if v != "" {
+		if runtime.GOOS == "linux" {
+			return "libssl.so." + v
+		}
+		return v
+	}
+	// TODO: not sure how we want to handle dynamically resolving the openssl version.
+	// Try to find a supported version of OpenSSL on the system.
+	// This is useful for local testing, where the user may not
+	// have GO_OPENSSL_VERSION_OVERRIDE set.
+	versions := []string{"3", "1.1.1", "1.1", "11", "111", "1.0.2", "1.0.0", "10"}
+	for _, v = range versions {
+		if runtime.GOOS == "darwin" {
+			v = "libssl." + v + ".dylib"
+		} else {
+			v = "libssl.so." + v
+		}
+		if ok, _ := CheckVersion(v); ok {
+			return v
+		}
+	}
+	return "libssl.so"
+}
+
+var Version string
+
+func init() {
+	Version = getVersion()
+}
 
 // CheckVersion checks if the OpenSSL version can be loaded
 // and if the FIPS mode is enabled.

@@ -40,13 +40,13 @@ WORKDIR /go/src/go-openssl-fips
 RUN <<EOF
 set -x
 
-openssl version
+# openssl version
+
+# linker should fail
+ldd ssl-client-glibc-2.36 2>&1 | grep -q 'not found'
 
 # should succeed
 ldd --version
 ldd ssl-client-glibc-2.31
 ./ssl-client-glibc-2.31
-
-# linker should fail
-ldd ssl-client-glibc-2.36 2>&1 | grep -q 'not found'
 EOF
