@@ -11,8 +11,6 @@ import (
 // libssl on the host.
 func NewSSLClient(timeout time.Duration) (*http.Client, error) {
 	// dynamically load the libssl library
-	// TODO: this should be called only once before the client gets used or
-	// connection gets used.
 	err := libssl.Init(libssl.Version)
 	if err != nil {
 		// fallback to default http.Client

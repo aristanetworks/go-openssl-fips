@@ -1,4 +1,4 @@
-package client
+package conn
 
 import (
 	"net"
@@ -101,14 +101,9 @@ func (c *SSLConn) Write(b []byte) (int, error) {
 
 // Close will close the SSL connection.
 func (c *SSLConn) Close() error {
-	defer func() {
+	if err := libssl.SSLShutdownWithRetry(c.ssl, c.timeout); err != nil {
 		libssl.SSLFree(c.ssl)
 		libssl.SSLCtxFree(c.sslCtx)
-		// Closing the TCP conn will close the underlying fd
-		c.conn.Close()
-	}()
-	if err := libssl.SSLShutdownWithRetry(c.ssl, c.timeout); err != nil {
-		return err
 	}
-	return nil
+	return c.conn.Close()
 }

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"time"
+
+	"github.com/golang-fips/openssl/v2/client/conn"
 )
 
 // SSLTransport sends the request over an SSLConn.
@@ -14,7 +16,7 @@ type SSLTransport struct {
 
 // RoundTrip is used to do a single HTTP transaction using openssl.
 func (t *SSLTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	conn, err := NewSSLConn(req.URL, t.Timeout)
+	conn, err := conn.NewSSLConn(req.URL, t.Timeout)
 	if err != nil {
 		return nil, err
 	}

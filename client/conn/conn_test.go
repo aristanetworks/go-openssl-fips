@@ -1,4 +1,4 @@
-package client_test
+package conn_test
 
 import (
 	"bufio"
@@ -7,24 +7,28 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang-fips/openssl/v2/client"
+	"github.com/golang-fips/openssl/v2/client/conn"
+	"github.com/golang-fips/openssl/v2/client/internal/testutils"
+	"github.com/golang-fips/openssl/v2/libssl"
 )
 
+func init() {
+    libssl.Init(libssl.Version)
+}
+
 func TestSSLConn(t *testing.T) {
-	ts := newTestServer()
+	ts := testutils.NewServer(t)
 	defer ts.Close()
 
 	// Add a test item
-	ts.store.SetItem(Item{ID: "1", Name: "Test Item"})
-
-	host, _ := url.Parse(ts.server.URL)
-	conn, err := client.NewSSLConn(host, 10)
+	host, _ := url.Parse(ts.URL)
+	conn, err := conn.NewSSLConn(host, 10)
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
 	}
 	defer conn.Close()
 
-	request := fmt.Sprintf("GET /items/1 HTTP/1.1\r\nHost: %s\r\n\r\n", host.Hostname())
+	request := fmt.Sprintf("GET /get HTTP/1.1\r\nHost: %s\r\n\r\n", host.Hostname())
 	_, err = conn.Write([]byte(request))
 	if err != nil {
 		t.Fatalf("Failed to write request: %v", err)
