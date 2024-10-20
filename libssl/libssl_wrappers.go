@@ -3,7 +3,9 @@ package libssl
 // #include "golibssl.h"
 import "C"
 import (
+	"errors"
 	"fmt"
+	"time"
 	"unsafe"
 )
 
@@ -77,9 +79,106 @@ func SetSSLFd(ssl *Ssl, fd int) error {
 func SSLConnect(ssl *Ssl) error {
 	r := C.go_openssl_SSL_connect(ssl.inner)
 	if r != 1 {
-		return newOpenSSLError("libssl: SSL_connect")
+		return newSSLError("libssl: SSL_connect", SSLGetError(ssl, int(r)))
 	}
 	return nil
+}
+
+func SSLConnectWithRetry(ssl *Ssl, timeout time.Duration) error {
+	_, _, err := Retry(func() ([]byte, int, error) {
+		return nil, 0, SSLConnect(ssl)
+	}, timeout)
+	if res := SSLGetVerifyResult(ssl); res != X509_V_OK {
+		return fmt.Errorf("libssl: SSL_connect: x509: %s", X509VerifyCertErrorString(res))
+	}
+	return err
+}
+
+// SSLShutdown closes an active TLS/SSL connection. It sends the "close notify" shutdown alert to
+// the peer.
+func SSLShutdown(ssl *Ssl) error {
+	r := int(C.go_openssl_SSL_shutdown(ssl.inner))
+	switch r {
+	case 1:
+		return nil
+	case 0:
+		// Bidirectional shutdown must be performed. SSL_shutdown will need to be called again.
+		// TODO: I don't like the idea of doing a recursive call here
+		return SSLShutdown(ssl)
+	default:
+		return newSSLError("libssl: SSL_shutdown", SSLGetError(ssl, r))
+	}
+}
+
+func SSLShutdownWithRetry(ssl *Ssl, timeout time.Duration) error {
+	_, _, err := Retry(func() ([]byte, int, error) {
+		return nil, 0, SSLShutdown(ssl)
+	}, timeout)
+	return err
+}
+
+func SSLWriteEx(ssl *Ssl, req []byte) (int, error) {
+	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+		var written C.size_t
+		r := C.go_openssl_SSL_write_ex(
+			ssl.inner,
+			unsafe.Pointer(addr(req)),
+			C.size_t(len(req)),
+			&written)
+		if r != 1 {
+			return 0, newSSLError("libssl: SSL_write_ex", SSLGetError(ssl, int(r)))
+		}
+		return int(written), nil
+	}
+	// For older versions, use SSL_write
+	r := C.go_openssl_SSL_write(ssl.inner, unsafe.Pointer(addr(req)), C.int(len(req)))
+	if r <= 0 {
+		return 0, newSSLError("libssl: SSL_write", SSLGetError(ssl, int(r)))
+	}
+	return int(r), nil
+}
+
+func SSLWriteExWithRetry(ssl *Ssl, req []byte, timeout time.Duration) (int, error) {
+	_, w, err := Retry(func() ([]byte, int, error) {
+		w, err := SSLWriteEx(ssl, req)
+		return nil, w, err
+	}, timeout)
+	return w, err
+}
+
+func SSLReadEx(ssl *Ssl, size int) ([]byte, int, error) {
+	resp := make([]byte, size)
+	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+		var readBytes C.size_t
+		r := C.go_openssl_SSL_read_ex(
+			ssl.inner,
+			unsafe.Pointer(addr(resp)),
+			C.size_t(size),
+			&readBytes)
+		if r != 1 {
+			return nil, 0, newSSLError("libssl: SSL_read_ex", SSLGetError(ssl, int(r)))
+		}
+		return resp[:readBytes], int(readBytes), nil
+	}
+	// For older versions, use SSL_read
+	r := C.go_openssl_SSL_read(
+		ssl.inner,
+		unsafe.Pointer(addr(resp)),
+		C.int(size))
+	if r <= 0 {
+		return nil, 0, newSSLError("libssl: SSL_read", SSLGetError(ssl, int(r)))
+	}
+	return resp[:r], int(r), nil
+}
+
+func SSLReadExWithRetry(ssl *Ssl, size int, timeout time.Duration) ([]byte, int, error) {
+	return Retry(func() ([]byte, int, error) {
+		b, n, err := SSLReadEx(ssl, size)
+		// if err != nil && SSLGetError(ssl, 0) == SSL_ERROR_ZERO_RETURN {
+		// 	return b, n, nil
+		// }
+		return b, n, err
+	}, timeout)
 }
 
 func SSLWrite(ssl *Ssl, req []byte) error {
@@ -120,6 +219,8 @@ func SSLCtxSetOptions(ctx *SslCtx, version int) error {
 		options = C.GO_SSL_OP_NO_SSLv2 | C.GO_SSL_OP_NO_SSLv3 | C.GO_SSL_OP_NO_TLSv1
 	case C.GO_TLS1_2_VERSION:
 		options = C.GO_SSL_OP_NO_SSLv2 | C.GO_SSL_OP_NO_SSLv3 | C.GO_SSL_OP_NO_TLSv1 | C.GO_SSL_OP_NO_TLSv1_1
+	default:
+		return errors.New("libssl: SSL_CTX_set_options: Unsupported TLS version")
 	}
 	// get options call
 	oldMask := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_OPTIONS, C.long(0), nil)
@@ -201,7 +302,10 @@ func X509VerifyParamSet1Host(param *X509VerifyParam, hostname string) error {
 	cHostname := C.CString(hostname)
 	defer C.free(unsafe.Pointer(cHostname))
 
-	result := C.go_openssl_X509_VERIFY_PARAM_set1_host(param.inner, cHostname, C.size_t(len(hostname)))
+	result := C.go_openssl_X509_VERIFY_PARAM_set1_host(
+		param.inner,
+		cHostname,
+		C.size_t(len(hostname)))
 	if result != 1 {
 		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host")
 	}
@@ -217,11 +321,12 @@ func SSLSetHostFlags(ssl *Ssl, hostname string, flags int64) error {
 	}
 
 	// For older versions, we need to get the X509_VERIFY_PARAM, set the flags, and then set the hostname
-	param := &X509VerifyParam{inner: C.go_openssl_SSL_get0_param(ssl.inner)}
-	if param == nil {
+	ret := C.go_openssl_SSL_get0_param(ssl.inner)
+	if ret == nil {
 		return newOpenSSLError("libssl: SSL_get0_param")
 	}
 
+	param := &X509VerifyParam{inner: ret}
 	if err := X509VerifyParamSetFlags(param, flags); err != nil {
 		return err
 	}
@@ -229,50 +334,14 @@ func SSLSetHostFlags(ssl *Ssl, hostname string, flags int64) error {
 	cHostname := C.CString(hostname)
 	defer C.free(unsafe.Pointer(cHostname))
 
-	if C.go_openssl_X509_VERIFY_PARAM_set1_host(param.inner, cHostname, C.size_t(len(hostname))) != 1 {
+	if C.go_openssl_X509_VERIFY_PARAM_set1_host(
+		param.inner,
+		cHostname,
+		C.size_t(len(hostname))) != 1 {
 		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host")
 	}
 
 	return nil
-}
-
-func SSLWriteEx(ssl *Ssl, req []byte) (int, error) {
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
-		var written C.size_t
-		r := C.go_openssl_SSL_write_ex(
-			ssl.inner,
-			unsafe.Pointer(addr(req)),
-			C.size_t(len(req)),
-			&written)
-		if r != 1 {
-			return 0, newOpenSSLError("libssl: SSL_write_ex")
-		}
-		return int(written), nil
-	}
-	// For older versions, use SSL_write
-	r := C.go_openssl_SSL_write(ssl.inner, unsafe.Pointer(addr(req)), C.int(len(req)))
-	if r <= 0 {
-		return 0, newOpenSSLError("libssl: SSL_write")
-	}
-	return int(r), nil
-}
-
-func SSLReadEx(ssl *Ssl, size int) ([]byte, int, error) {
-	resp := make([]byte, size)
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
-		var readBytes C.size_t
-		r := C.go_openssl_SSL_read_ex(ssl.inner, unsafe.Pointer(addr(resp)), C.size_t(size), &readBytes)
-		if r != 1 {
-			return nil, 0, newOpenSSLError("libssl: SSL_read_ex")
-		}
-		return resp[:readBytes], int(readBytes), nil
-	}
-	// For older versions, use SSL_read
-	r := C.go_openssl_SSL_read(ssl.inner, unsafe.Pointer(addr(resp)), C.int(size))
-	if r <= 0 {
-		return nil, 0, newOpenSSLError("libssl: SSL_read")
-	}
-	return resp[:r], int(r), nil
 }
 
 type SslVerifyCallback struct {
@@ -310,35 +379,9 @@ func SSLGetVerifyResult(ssl *Ssl) int64 {
 }
 
 func X509VerifyCertErrorString(n int64) string {
-	ret := C.go_openssl_X509_verify_cert_error_string(C.long(n))
-	return C.GoString(ret)
+	return C.GoString(C.go_openssl_X509_verify_cert_error_string(C.long(n)))
 }
 
 func SSLGetError(ssl *Ssl, ret int) int {
-	r := C.go_openssl_SSL_get_error(ssl.inner, C.int(ret))
-	return int(r)
-}
-
-// SSLShutdown closes an active TLS/SSL connection. It should be called after the peer shutsdown
-// gracefully.
-func SSLShutdown(ssl *Ssl) error {
-	ret := C.go_openssl_SSL_shutdown(ssl.inner)
-	switch ret {
-	case 0:
-		// The shutdown is not yet finished. Call SSL_shutdown() for a second time, if a
-		// bidirectional shutdown shall be performed. The output of SSL_get_error(3) may be
-		// misleading, as an erroneous SSL_ERROR_SYSCALL may be flagged even though no error
-		// occurred.
-		return SSLShutdown(ssl)
-	case 1:
-		// The shutdown was successfully completed. The "close notify" alert was sent and the
-		// peer's "close notify" alert was received.
-		return nil
-	default:
-		// The shutdown was not successful because a fatal error occurred either at the protocol
-		// level or a connection failure occurred. It can also occur if action is need to continue
-		// the operation for non-blocking BIOs. Calling SSL_get_error(3) with the return value ret
-		// will return the reason.
-		return newOpenSSLError(fmt.Sprintf("libssl: SSL_shutdown: reason %d", SSLGetError(ssl, int(ret))))
-	}
+	return int(C.go_openssl_SSL_get_error(ssl.inner, C.int(ret)))
 }

@@ -92,7 +92,7 @@ const (
 	X509_V_FLAG_NO_CHECK_TIME          = C.GO_X509_V_FLAG_NO_CHECK_TIME
 )
 
-// X509 verification return values
+// X509 verification constants
 const (
     X509_V_OK                                     = C.GO_X509_V_OK
     X509_V_ERR_UNSPECIFIED                        = C.GO_X509_V_ERR_UNSPECIFIED

@@ -1,4 +1,4 @@
-# OpenSSL TLS Methods Compatiability Matrix
+# Libssl ABI Compatibility
 
 | Method Name | OpenSSL 3.x | OpenSSL 1.1.1 | OpenSSL 1.1.0 | OpenSSL 1.0.x |
 |-------------|-------------|---------------|---------------|---------------|
@@ -28,7 +28,7 @@
 | SSL_CTX_free | void SSL_CTX_free(SSL_CTX *ctx) | void SSL_CTX_free(SSL_CTX *ctx) | void SSL_CTX_free(SSL_CTX *ctx) | void SSL_CTX_free(SSL_CTX *ctx) |
 | ERR_print_errors_fp | void ERR_print_errors_fp(FILE *fp) | void ERR_print_errors_fp(FILE *fp) | void ERR_print_errors_fp(FILE *fp) | void ERR_print_errors_fp(FILE *fp) |
 
-# OpenSSL Backwards Compatiability Matrix
+# Backwards Compatible ABIs
 | New Method Name | Old Method Name | OpenSSL 1.1.0 and earlier | OpenSSL 1.0.x |
 |-----------------|-----------------|---------------------------|---------------|
 | BIO_lookup_ex | getaddrinfo (system call) | int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) | int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) |
