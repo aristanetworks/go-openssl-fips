@@ -245,6 +245,7 @@ DEFINEFUNC_1_1(int, SSL_read_ex, (GO_SSL_PTR s, void *buf, size_t num, size_t *r
 DEFINEFUNC(long, SSL_CTX_ctrl, (GO_SSL_CTX_PTR ctx, int cmd, long larg, void *parg), (ctx, cmd, larg, parg)) \
 DEFINEFUNC(void, SSL_CTX_set_verify, (GO_SSL_CTX_PTR ctx, int mode, GO_SSL_verify_cb_PTR vb), (ctx, mode, vb)) \
 DEFINEFUNC(int, SSL_CTX_set_default_verify_paths, (GO_SSL_CTX_PTR ctx), (ctx)) \
+DEFINEFUNC(int, SSL_CTX_load_verify_locations, (GO_SSL_CTX_PTR ctx, const char *CAfile, const char *CApath), (ctx, CAfile, CApath)) \
 /* SSL_ctrl is needed for SSL_set_tlsext_host_name */ \
 DEFINEFUNC(long, SSL_ctrl, (GO_SSL_PTR ctx, int cmd, long larg, void *parg), (ctx, cmd, larg, parg)) \
 DEFINEFUNC_1_1(int, SSL_set1_host, (GO_SSL_PTR s, const char *hostname), (s, hostname)) \

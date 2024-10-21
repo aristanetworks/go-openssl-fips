@@ -12,11 +12,13 @@ import (
 // SSLTransport sends the request over an SSLConn.
 type SSLTransport struct {
 	Timeout time.Duration
+
+	Config *conn.Config
 }
 
 // RoundTrip is used to do a single HTTP transaction using openssl.
 func (t *SSLTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	conn, err := conn.NewSSLConn(req.URL, t.Timeout)
+	conn, err := conn.NewSSLConn(req.URL, t.Timeout, t.Config)
 	if err != nil {
 		return nil, err
 	}

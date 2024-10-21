@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	err := libssl.Init(libssl.Version)
+	err := libssl.Init(libssl.GetVersion())
 	if err != nil {
 		panic(err)
 	}

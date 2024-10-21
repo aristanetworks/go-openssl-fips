@@ -1,6 +1,9 @@
+//go:generate go run certs/generate_cert.go certs/
 package testutils
 
 import (
+	"crypto/tls"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,11 +13,17 @@ import (
 	"testing"
 )
 
-// Server represents a test HTTPS server.
+// Server is a test HTTPS server.
 type Server struct {
 	*httptest.Server
-	URL string // URL of the test server
+	URL string
 }
+
+//go:embed certs/cert.pem
+var certBytes []byte
+
+//go:embed certs/key.pem
+var keyBytes []byte
 
 // NewServer creates a new test HTTPS server.
 func NewServer(t *testing.T) *Server {
@@ -90,6 +99,11 @@ func NewServer(t *testing.T) *Server {
 	})
 
     server := httptest.NewUnstartedServer(mux)
+	cert, err := tls.X509KeyPair(certBytes, keyBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
     server.StartTLS()
 	return &Server{
 		Server: server,

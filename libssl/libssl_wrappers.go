@@ -353,9 +353,24 @@ func SSLCtxSetVerify(ctx *SslCtx, mode int, callback SslVerifyCallback) {
 }
 
 func SSLCtxSetDefaultVerifyPaths(ctx *SslCtx) error {
-	r := C.go_openssl_SSL_CTX_set_default_verify_paths(ctx.inner)
-	if r != 1 {
+	if r := int(C.go_openssl_SSL_CTX_set_default_verify_paths(ctx.inner)); r != 1 {
 		return newOpenSSLError("libssl: SSL_CTX_set_default_verify_paths")
+	}
+	return nil
+}
+
+// SSLCtxLoadVerifyLocations specifies locations for ctx, at which CA certificates for verification
+// purposes are located. The certificates available via CAfile and CApath are trusted.
+//
+// When looking up CA certificates, the OpenSSL library will first search the certificates in
+// CAfile, then those in CApath.
+func SSLCtxLoadVerifyLocations(ctx *SslCtx, caFile, caPath string) error {
+	cFile := C.CString(caFile)
+	cPath := C.CString(caPath)
+	defer C.free(unsafe.Pointer(cFile))
+	defer C.free(unsafe.Pointer(cPath))
+	if r := int(C.go_openssl_SSL_CTX_load_verify_locations(ctx.inner, cFile, cPath)); r != 1 {
+		return newOpenSSLError("libssl: SSL_CTX_load_verify_locations")
 	}
 	return nil
 }
@@ -363,12 +378,11 @@ func SSLCtxSetDefaultVerifyPaths(ctx *SslCtx) error {
 func SSLSetTLSExtHostName(ssl *Ssl, name string) error {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	r := C.go_openssl_SSL_ctrl(
+	if r := C.go_openssl_SSL_ctrl(
 		ssl.inner,
 		C.GO_SSL_CTRL_SET_TLSEXT_HOSTNAME,
 		C.GO_TLSEXT_NAMETYPE_host_name,
-		unsafe.Pointer(cName))
-	if r != 1 {
+		unsafe.Pointer(cName)); r != 1 {
 		return newOpenSSLError("libssl: SSL_set_tlsext_host_name")
 	}
 	return nil

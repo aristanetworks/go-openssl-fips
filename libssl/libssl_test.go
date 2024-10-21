@@ -11,12 +11,15 @@ import (
 	"github.com/golang-fips/openssl/v2/libssl"
 )
 
-// getVersion returns the OpenSSL version to use for testing.
-func getVersion() string {
+// GetVersion returns the OpenSSL version to use for testing.
+func GetVersion() string {
 	v := os.Getenv("GO_OPENSSL_VERSION_OVERRIDE")
 	if v != "" {
-		if runtime.GOOS == "linux" {
-			return "libssl.so." + v
+		switch runtime.GOOS {
+		case "linux":
+			v = "libssl.so." + v
+		case "darwin":
+			v = "libssl." + v + ".dylib"
 		}
 		return v
 	}
@@ -32,12 +35,11 @@ func getVersion() string {
 		}
 	}
 	for _, v = range versions {
-		if runtime.GOOS == "windows" {
-			v += ".dll"
-		} else if runtime.GOOS == "darwin" {
-			v = "libssl." + v + ".dylib"
-		} else {
+		switch runtime.GOOS {
+		case "linux":
 			v = "libssl.so." + v
+		case "darwin":
+			v = "libssl." + v + ".dylib"
 		}
 		if ok, _ := libssl.CheckVersion(v); ok {
 			return v
@@ -47,7 +49,7 @@ func getVersion() string {
 }
 
 func TestMain(m *testing.M) {
-	v := getVersion()
+	v := GetVersion()
 	fmt.Printf("Using %s\n", v)
 	err := libssl.Init(v)
 	if err != nil {
@@ -70,7 +72,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestCheckVersion(t *testing.T) {
-	v := getVersion()
+	v := GetVersion()
 	exists, fips := libssl.CheckVersion(v)
 	if !exists {
 		t.Fatalf("OpenSSL version %q not found", v)
@@ -81,7 +83,7 @@ func TestCheckVersion(t *testing.T) {
 }
 
 func TestSSL_connect(t *testing.T) {
-	v := getVersion()
+	v := GetVersion()
 	err := libssl.Init(v)
 	if err != nil {
 		panic(err)

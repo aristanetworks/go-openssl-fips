@@ -6,7 +6,6 @@ package libssl
 // #include "golibssl.h"
 import "C"
 import (
-	"encoding/binary"
 	"errors"
 	"os"
 	"runtime"
@@ -27,10 +26,8 @@ var (
 	initErr  error
 )
 
-var nativeEndian binary.ByteOrder
-
-// getVersion returns the OpenSSL version to use for testing.
-func getVersion() string {
+// GetVersion returns the OpenSSL version to use for testing.
+func GetVersion() string {
 	v := os.Getenv("GO_OPENSSL_VERSION_OVERRIDE")
 	if v != "" {
 		if runtime.GOOS == "linux" {
@@ -54,12 +51,6 @@ func getVersion() string {
 		}
 	}
 	return "libssl.so"
-}
-
-var Version string
-
-func init() {
-	Version = getVersion()
 }
 
 // CheckVersion checks if the OpenSSL version can be loaded
@@ -86,17 +77,6 @@ func CheckVersion(version string) (exists, fips bool) {
 // library libcrypto.so.1.1.1k-fips.
 func Init(file string) error {
 	initOnce.Do(func() {
-		buf := [2]byte{}
-		*(*uint16)(unsafe.Pointer(&buf[0])) = uint16(0xABCD)
-
-		switch buf {
-		case [2]byte{0xCD, 0xAB}:
-			nativeEndian = binary.LittleEndian
-		case [2]byte{0xAB, 0xCD}:
-			nativeEndian = binary.BigEndian
-		default:
-			panic("Could not determine native endianness.")
-		}
 		vMajor, vMinor, vPatch, initErr = opensslInit(file)
 	})
 	return initErr
@@ -150,14 +130,6 @@ func FIPS() bool {
 		panic(errUnsupportedVersion())
 	}
 }
-
-// // isProviderAvailable checks if the provider with the given name is available.
-// // This function is used in export_test.go, but must be defined here as test files can't access C functions.
-// func isProviderAvailable(name string) bool {
-// 	providerName := C.CString(name)
-// 	defer C.free(unsafe.Pointer(providerName))
-// 	return C.go_openssl_OSSL_PROVIDER_available(nil, providerName) == 1
-// }
 
 // SetFIPS enables or disables FIPS mode.
 //
@@ -227,22 +199,6 @@ func addr(p []byte) *byte {
 		return &zero
 	}
 	return (*byte)(noescape(unsafe.Pointer(&p[0])))
-}
-
-// base returns the address of the underlying array in b,
-// being careful not to panic when b has zero length.
-func base(b []byte) *C.uchar {
-	if len(b) == 0 {
-		return nil
-	}
-	return (*C.uchar)(unsafe.Pointer(&b[0]))
-}
-
-func sbase(b []byte) *C.char {
-	if len(b) == 0 {
-		return nil
-	}
-	return (*C.char)(unsafe.Pointer(&b[0]))
 }
 
 func newOpenSSLError(msg string) error {

@@ -21,7 +21,7 @@ type SSLConn struct {
 }
 
 // NewSSLConn creates a new SSL connection to the host.
-func NewSSLConn(host *url.URL, timeout time.Duration) (*SSLConn, error) {
+func NewSSLConn(host *url.URL, timeout time.Duration, config *Config) (*SSLConn, error) {
 	// set up TLS client connection context
 	method, err := libssl.NewTLSClientMethod()
 	if err != nil {
@@ -33,9 +33,17 @@ func NewSSLConn(host *url.URL, timeout time.Duration) (*SSLConn, error) {
 	}
 	// Configure the client to abort the handshake if certificate verification fails
 	libssl.SSLCtxSetVerify(sslCtx, libssl.SSL_VERIFY_PEER, libssl.SslVerifyCallback{})
-	// Use the default trusted certificate store
-	if err := libssl.SSLCtxSetDefaultVerifyPaths(sslCtx); err != nil {
-		return nil, err
+
+	if config != nil {
+		// Use specified trusted certificate store
+		if err := libssl.SSLCtxLoadVerifyLocations(sslCtx, config.CaFile, config.CaPath); err != nil {
+			return nil, err
+		}
+	} else {
+		// Use the default trusted certificate store
+		if err := libssl.SSLCtxSetDefaultVerifyPaths(sslCtx); err != nil {
+			return nil, err
+		}
 	}
 
 	// Set minimum TLS version to TLSv1.2

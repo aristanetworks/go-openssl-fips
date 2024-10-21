@@ -10,14 +10,20 @@ import (
 	"time"
 
 	"github.com/golang-fips/openssl/v2/client"
+	"github.com/golang-fips/openssl/v2/client/conn"
 	"github.com/golang-fips/openssl/v2/client/internal/testutils"
+)
+
+var (
+	caFile = "./internal/testutils/certs/cert.pem"
+	caPath = "./internal/testutils/certs"
 )
 
 func TestSSLClientGet(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
 
-	sslClient, err := client.NewSSLClient(10 * time.Second)
+	sslClient, err := client.NewSSLClient("", 10 * time.Second, &conn.Config{CaFile: caFile, CaPath: caPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,22 +61,22 @@ func TestSSLClientPost(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
 
-	sslClient, err := client.NewSSLClient(10 * time.Second)
+	sslClient, err := client.NewSSLClient("", 10 * time.Second, &conn.Config{CaFile: caFile, CaPath: caPath})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Run("Create Item", func(t *testing.T) {
+	t.Run("Post", func(t *testing.T) {
 		jsonData, _ := json.Marshal([]byte(`{ "test": "key"}`))
-		resp, err := sslClient.Post(ts.URL+"/put", "application/json",
+		resp, err := sslClient.Post(ts.URL+"/post", "application/json",
 			strings.NewReader(string(jsonData)))
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusCreated {
-			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status %d, got %d", http.StatusOK, resp.StatusCode)
 		}
 
 		// Read the response body
@@ -94,3 +100,5 @@ func TestSSLClientPost(t *testing.T) {
 		}
 	})
 }
+
+// TODO: benchmark against default http.Client

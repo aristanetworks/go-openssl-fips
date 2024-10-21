@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang-fips/openssl/v2/client/conn"
 	"github.com/golang-fips/openssl/v2/client/internal/testutils"
@@ -13,16 +14,23 @@ import (
 )
 
 func init() {
-    libssl.Init(libssl.Version)
+	err := libssl.Init(libssl.GetVersion())
+	if err != nil {
+		panic(err)
+	}
 }
+
+var (
+	caFile = "../internal/testutils/certs/cert.pem"
+	caPath = "../internal/testutils/certs"
+)
 
 func TestSSLConn(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
 
-	// Add a test item
 	host, _ := url.Parse(ts.URL)
-	conn, err := conn.NewSSLConn(host, 10)
+	conn, err := conn.NewSSLConn(host, 10 * time.Second, &conn.Config{CaFile: caFile, CaPath: caPath})
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
 	}
