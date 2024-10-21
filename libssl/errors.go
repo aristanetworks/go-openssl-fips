@@ -56,44 +56,7 @@ func Retry(fn RetryableFunc, timeout time.Duration) ([]byte, int, error) {
 
 // IsRetryable returns true if the SSL error is retryable.
 // TODO: need to handle io failures similar to:
-// 1 == retry
-// 0 == EOF
-// -1 == error
-// static int handle_io_failure(SSL *ssl, int res)
-// {
-//     switch (SSL_get_error(ssl, res)) {
-//     case SSL_ERROR_WANT_READ:
-//         /* Temporary failure. Wait until we can read and try again */
-//         wait_for_activity(ssl, 0);
-//         return 1;
-
-//     case SSL_ERROR_WANT_WRITE:
-//         /* Temporary failure. Wait until we can write and try again */
-//         wait_for_activity(ssl, 1);
-//         return 1;
-
-//     case SSL_ERROR_ZERO_RETURN:
-//         /* EOF */
-//         return 0;
-
-//     case SSL_ERROR_SYSCALL:
-//         return -1;
-
-//     case SSL_ERROR_SSL:
-//         /*
-//         * If the failure is due to a verification error we can get more
-//         * information about it from SSL_get_verify_result().
-//         */
-//         if (SSL_get_verify_result(ssl) != X509_V_OK)
-//             printf("Verify error: %s\n",
-//                 X509_verify_cert_error_string(SSL_get_verify_result(ssl)));
-//         return -1;
-
-//     default:
-//         return -1;
-//     }
-// }
-
+// https://github.com/openssl/openssl/blob/5091aadc223315ce115ee12f62df2af173bf5efb/demos/guide/tls-client-non-block.c#L138
 func (e *SSLError) IsRetryable() bool {
 	switch e.Code {
 	case SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE,

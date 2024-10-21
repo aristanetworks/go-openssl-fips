@@ -1,3 +1,4 @@
+# Used to test the libssl bindings against openssl 3, openssl 1.1.1, and openssl 1.0.2
 FROM golang:1.23.2-bullseye AS build-glibc-2.31
 COPY . /go/src/go-openssl-fips
 
