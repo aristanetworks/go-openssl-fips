@@ -8,13 +8,13 @@ type Config struct {
 	// contain one CA certificate.
 	CaPath string
 
-    // // InsecureSkipVerify controls whether a client verifies the server's
-	// // certificate chain and host name. If InsecureSkipVerify is true, crypto/tls
-	// // accepts any certificate presented by the server and any host name in that
-	// // certificate. In this mode, TLS is susceptible to machine-in-the-middle
-	// // attacks unless custom verification is used. This should be used only for
-	// // testing or in combination with VerifyConnection or VerifyPeerCertificate.
-	// InsecureSkipVerify bool
+    // InsecureSkipVerify controls whether a client verifies the server's
+	// certificate chain and host name. If InsecureSkipVerify is true, crypto/tls
+	// accepts any certificate presented by the server and any host name in that
+	// certificate. In this mode, TLS is susceptible to machine-in-the-middle
+	// attacks unless custom verification is used. This should be used only for
+	// testing or in combination with VerifyConnection or VerifyPeerCertificate.
+	InsecureSkipVerify bool
 
     // // CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// // the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.

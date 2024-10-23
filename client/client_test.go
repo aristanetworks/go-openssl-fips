@@ -22,8 +22,9 @@ var (
 func TestSSLClientGet(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
-
-	sslClient, err := client.NewSSLClient("", 10 * time.Second, &conn.Config{CaFile: caFile, CaPath: caPath})
+	client, err := client.New("",
+	client.WithTLSConfig(&conn.Config{CaFile: caFile, CaPath: caPath}),
+	client.WithTimeout(10 * time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +40,7 @@ func TestSSLClientGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := sslClient.Get(ts.URL + tt.path)
+			resp, err := client.Get(ts.URL + tt.path)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
@@ -61,14 +62,18 @@ func TestSSLClientPost(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
 
-	sslClient, err := client.NewSSLClient("", 10 * time.Second, &conn.Config{CaFile: caFile, CaPath: caPath})
+	client, err := client.New("",
+	client.WithTLSConfig(&conn.Config{
+		CaFile: caFile,
+		CaPath: caPath}),
+	client.WithTimeout(10 * time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("Post", func(t *testing.T) {
 		jsonData, _ := json.Marshal([]byte(`{ "test": "key"}`))
-		resp, err := sslClient.Post(ts.URL+"/post", "application/json",
+		resp, err := client.Post(ts.URL+"/post", "application/json",
 			strings.NewReader(string(jsonData)))
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
