@@ -6,4 +6,5 @@
 [allowlist]
 paths = [
       'ecdh_test.go',
+      'client/internal/certs/*',
 ]

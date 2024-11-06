@@ -2,28 +2,21 @@ package client
 
 import (
 	"bufio"
+	"context"
+	"net"
 	"net/http"
 	"net/http/httputil"
-	"time"
-
-	"github.com/golang-fips/openssl/v2/client/conn"
 )
 
-// SSLTransport sends the request over an SSLConn.
 type SSLTransport struct {
-	Timeout time.Duration
-	Headers map[string]string
-	TLSConfig *conn.Config
+	ctx    *SSLContext
+	dialer *SSLDialer
 }
 
-// RoundTrip is used to do a single HTTP transaction using openssl.
+// RoundTrip is used to do a single HTTP transaction using openssl
 func (t *SSLTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Add additional Headers to the request headers
-	for k, v := range t.Headers {
-		req.Header.Add(k, v)
-	}
-
-	conn, err := conn.NewSSLConn(req.URL, t.Timeout, t.TLSConfig)
+	address := net.JoinHostPort(req.URL.Hostname(), req.URL.Port())
+	conn, err := t.dialer.DialTLSContext(context.Background(), "tcp", address)
 	if err != nil {
 		return nil, err
 	}

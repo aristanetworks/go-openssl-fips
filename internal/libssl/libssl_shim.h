@@ -38,7 +38,7 @@ enum {
     GO_SSL_VERIFY_POST_HANDSHAKE = 0x08
 };
 
-// SSL_CTX_set_mode options
+// SSL_CTX_ctrl options
 enum {
     GO_SSL_MODE_ENABLE_PARTIAL_WRITE = 0x00000001L,
     GO_SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER = 0x00000002L,
@@ -46,7 +46,7 @@ enum {
     GO_SSL_MODE_RELEASE_BUFFERS = 0x00000010L
 };
 
-// TLS version constants
+// TLS version options
 enum {
     GO_TLS1_VERSION = 0x0301,
     GO_TLS1_1_VERSION = 0x0302,
@@ -128,18 +128,63 @@ enum {
 };
 
 
-// SSL and SSL_CTX ctrl constants
+// SSL and SSL_CTX ctrl options
 enum {
-    GO_SSL_CTRL_OPTIONS = 32,
-    GO_SSL_CTRL_SET_TLSEXT_HOSTNAME = 55,
-    GO_SSL_CTRL_SET_MIN_PROTO_VERSION = 123,
-    GO_SSL_CTRL_SET_MAX_PROTO_VERSION = 124
+    GO_SSL_CTRL_OPTIONS                                = 32,
+    GO_SSL_CTRL_MODE                                   = 33,
+    GO_SSL_CTRL_GET_READ_AHEAD                         = 40,
+    GO_SSL_CTRL_SET_READ_AHEAD                         = 41,
+    GO_SSL_CTRL_SET_TLSEXT_HOSTNAME                    = 55,
+    GO_SSL_CTRL_SET_MIN_PROTO_VERSION                  = 123,
+    GO_SSL_CTRL_SET_MAX_PROTO_VERSION                  = 124
 };
 
 enum {
     GO_TLSEXT_NAMETYPE_host_name = 0,
 };
 
+// SSL shutdown modes
+enum {
+    GO_SSL_NO_SHUTDOWN        = 0,
+    GO_SSL_SENT_SHUTDOWN      = 1,
+    GO_SSL_RECEIVED_SHUTDOWN  = 2,
+};
+
+// BIO ctrl options
+enum {
+    GO_BIO_C_SET_FD                            = 104,
+    GO_BIO_C_GET_FD                            = 105,
+    GO_BIO_C_SET_FILE_PTR                      = 106,
+    GO_BIO_C_GET_FILE_PTR                      = 107,
+    GO_BIO_C_SET_FILENAME                      = 108,
+    GO_BIO_C_SET_SSL                           = 109,
+    GO_BIO_C_GET_SSL                           = 110,
+};
+
+// BIO lookup type
+enum {
+    GO_BIO_LOOKUP_CLIENT = 0,
+    GO_BIO_LOOKUP_SERVER = 1,
+};
+
+// BIO sock flags
+enum GO_BIO_SOCK_FLAGS {
+    // Allows reusing local addresses
+    GO_BIO_SOCK_REUSEADDR = 1 << 0,  /* 0x01 */
+    //  Restricts to IPv6 only
+    GO_BIO_SOCK_V6_ONLY   = 1 << 1,  /* 0x02 */
+    // Enables TCP keepalive
+    GO_BIO_SOCK_KEEPALIVE = 1 << 2,  /* 0x04 */
+    // Sets non-blocking mode
+    GO_BIO_SOCK_NONBLOCK  = 1 << 3,  /* 0x08 */
+    // Disables Nagle's algorithm
+    GO_BIO_SOCK_NODELAY   = 1 << 4   /* 0x10 */
+};
+
+enum GO_BIO_CLOSE_FLAGS {
+    GO_BIO_NOCLOSE = 0x00,  /* Don't close on free */
+    GO_BIO_CLOSE   = 0x01   /* Close on free */
+};
 
 typedef void* GO_OPENSSL_INIT_SETTINGS_PTR;
 typedef void* GO_OSSL_LIB_CTX_PTR;
@@ -151,6 +196,11 @@ typedef void* GO_CRYPTO_THREADID_PTR;
 typedef void* GO_SSL_CTX_PTR;
 typedef void* GO_SSL_METHOD_PTR;
 typedef void* GO_SSL_PTR;
+typedef void* GO_SSL_SESSION_PTR;
+typedef void *GO_BIO_ADDRINFO_PTR;
+typedef void *GO_BIO_ADDR_PTR;
+typedef void *GO_BIO_PTR;
+typedef void *GO_BIO_METHOD_PTR;
 
 // FOR_ALL_LIBSSL_FUNCTIONS is the list of all functions from libcrypto that are used in this package.
 // Forgetting to add a function here results in build failure with message reporting the function
@@ -235,10 +285,12 @@ DEFINEFUNC(void, SSL_CTX_free, (GO_SSL_CTX_PTR ctx), (ctx)) \
 DEFINEFUNC(GO_SSL_PTR, SSL_new, (GO_SSL_CTX_PTR ctx), (ctx)) \
 DEFINEFUNC(void, SSL_free, (GO_SSL_PTR ctx), (ctx)) \
 DEFINEFUNC(void, SSL_clear, (GO_SSL_PTR ctx), (ctx)) \
-DEFINEFUNC(int, SSL_set_fd, (GO_SSL_PTR ctx, int fd), (ctx, fd)) \
-DEFINEFUNC(int, SSL_connect, (GO_SSL_PTR ctx), (ctx)) \
-DEFINEFUNC(int, SSL_write, (GO_SSL_PTR ctx, const void *buf, int num), (ctx, buf, num)) \
-DEFINEFUNC(int, SSL_read, (GO_SSL_PTR ctx, void *buf, int num), (ctx, buf, num)) \
+DEFINEFUNC(int, SSL_set_fd, (GO_SSL_PTR ssl, int fd), (ssl, fd)) \
+DEFINEFUNC(int, SSL_set_wfd, (GO_SSL_PTR ssl, int fd), (ssl, fd)) \
+DEFINEFUNC(int, SSL_set_rfd, (GO_SSL_PTR ssl, int fd), (ssl, fd)) \
+DEFINEFUNC(int, SSL_connect, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(int, SSL_write, (GO_SSL_PTR ssl, const void *buf, int num), (ssl, buf, num)) \
+DEFINEFUNC(int, SSL_read, (GO_SSL_PTR ssl, void *buf, int num), (ssl, buf, num)) \
 DEFINEFUNC_1_1(int, SSL_write_ex, (GO_SSL_PTR s, const void *buf, size_t num, size_t *written), (s, buf, num, written)) \
 DEFINEFUNC_1_1(int, SSL_read_ex, (GO_SSL_PTR s, void *buf, size_t num, size_t *readbytes), (s, buf, num, readbytes)) \
 /* SSL_CTX_ctrl is needed for SSL_CTX_set_min_proto_version */ \
@@ -260,7 +312,32 @@ DEFINEFUNC(int, X509_VERIFY_PARAM_set_flags, (GO_X509_VERIFY_PARAM_PTR vpm, long
 DEFINEFUNC(int, X509_VERIFY_PARAM_set1_host, (GO_X509_VERIFY_PARAM_PTR vpm, const char *name, size_t namelen), (vpm, name, namelen)) \
 DEFINEFUNC(const char*, X509_verify_cert_error_string, (long n), (n)) \
 DEFINEFUNC(int, SSL_get_error, (GO_SSL_PTR ssl, int ret), (ssl, ret)) \
+DEFINEFUNC(void, ERR_clear_error, (void), ()) \
 DEFINEFUNC(int, SSL_shutdown, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(int, SSL_get_shutdown, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(void, SSL_set_shutdown, (GO_SSL_PTR ssl, int mode), (ssl, mode)) \
+DEFINEFUNC(GO_SSL_SESSION_PTR, SSL_get1_session, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(void, SSL_SESSION_free, (GO_SSL_SESSION_PTR session), (session)) \
+DEFINEFUNC(void, SSL_set_connect_state, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(void, SSL_set_accept_state, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(int, SSL_do_handshake, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(int, SSL_set_session, (GO_SSL_PTR ssl, GO_SSL_SESSION_PTR session), (ssl, session)) \
+DEFINEFUNC(void, SSL_set_bio, (GO_SSL_PTR s, GO_BIO_PTR rbio, GO_BIO_PTR wbio), (s, rbio, wbio)) \
+DEFINEFUNC_1_1(int, BIO_lookup_ex, (const char *host, const char *service, int lookup_type, int family, int socktype, int protocol, GO_BIO_ADDRINFO_PTR res), (host, service, lookup_type, family, socktype, protocol, res)) \
+DEFINEFUNC_1_1(GO_BIO_ADDRINFO_PTR, BIO_ADDRINFO_next, (const GO_BIO_ADDRINFO_PTR ai), (ai)) \
+DEFINEFUNC_1_1(int, BIO_socket, (int family, int socktype, int protocol, int options), (family, socktype, protocol, options)) \
+DEFINEFUNC_1_1(int, BIO_ADDRINFO_family, (const GO_BIO_ADDRINFO_PTR ai), (ai)) \
+DEFINEFUNC_1_1(int, BIO_connect, (int sock, const GO_BIO_ADDR_PTR addr, int options), (sock, addr, options)) \
+DEFINEFUNC_1_1(GO_BIO_ADDR_PTR, BIO_ADDRINFO_address, (const GO_BIO_ADDRINFO_PTR ai), (ai)) \
+DEFINEFUNC_1_1(int, BIO_closesocket, (int sock), (sock)) \
+DEFINEFUNC_1_1(int, BIO_socket_nbio, (int sock, int mode), (sock, mode)) \
+DEFINEFUNC_1_1(void, BIO_ADDRINFO_free, (GO_BIO_ADDRINFO_PTR ai), (ai)) \
+DEFINEFUNC_1_1(GO_BIO_PTR, BIO_new, (const GO_BIO_METHOD_PTR type), (type)) \
+DEFINEFUNC_1_1(GO_BIO_METHOD_PTR, BIO_s_socket, (void), ()) \
+DEFINEFUNC(long, BIO_int_ctrl, (GO_BIO_PTR bp, int cmd, long larg, int iarg), (bp, cmd, larg, iarg)) \
+DEFINEFUNC(int, SSL_pending, (GO_SSL_PTR ssl), (ssl)) \
+
+// TODO int SSL_renegotiate_pending(const SSL *s);
 
 // Define pointers to all the used OpenSSL functions.
 // Calling C function pointers from Go is currently not supported.
