@@ -1,33 +1,48 @@
-package client
+package ossl
 
 import (
 	"fmt"
 	"runtime"
+	"sync"
 
 	"github.com/golang-fips/openssl/v2/internal/libssl"
 )
 
 type SSLContext struct {
-	ctx *libssl.SSLCtx
+	ctx      *libssl.SSLCtx
+	freeOnce sync.Once
+	freeErr  error
 }
 
 func NewSSLContext(c *Config) (*SSLContext, error) {
-	if !libsslInit {
-		return nil, ErrNoLibSslInit
-	}
-	ctx, err := newSslCtx(c.TLSMethod)
-	if err != nil {
-		libssl.SSLCtxFree(ctx)
+	if err := Init(c.LibsslVersion); err != nil {
 		return nil, err
 	}
-	sslCtx := &SSLContext{ctx: ctx}
-	sslCtx.apply(c)
-	runtime.SetFinalizer(sslCtx, nil)
+	var sslCtx *SSLContext
+	if err := runWithLockedOSThread(func() error {
+		ctx, err := newSslCtx(c.TLSMethod)
+		if err != nil {
+			libssl.SSLCtxFree(ctx)
+			return err
+		}
+		sslCtx = &SSLContext{ctx: ctx}
+		if err := sslCtx.apply(c); err != nil {
+			libssl.SSLCtxFree(ctx)
+			return err
+		}
+		runtime.SetFinalizer(sslCtx, nil)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 	return sslCtx, nil
 }
 
-func (c *SSLContext) Free() {
-	libssl.SSLCtxFree(c.ctx)
+func (c *SSLContext) Free() error {
+	c.freeOnce.Do(func() {
+		c.freeErr = libssl.SSLCtxFree(c.ctx)
+	})
+	return c.freeErr
 }
 
 func newSslCtx(m Method) (*libssl.SSLCtx, error) {

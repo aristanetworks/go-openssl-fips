@@ -1,4 +1,4 @@
-package client_test
+package ossl_test
 
 import (
 	"bytes"

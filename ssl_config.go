@@ -1,7 +1,6 @@
-package client
+package ossl
 
 import (
-	"path/filepath"
 	"time"
 
 	"github.com/golang-fips/openssl/v2/internal/libssl"
@@ -47,6 +46,9 @@ const (
 )
 
 type Config struct {
+	// LibsslVersion is the libssl version to dynamically load
+	LibsslVersion string
+
 	// CaFile is the path to a file of CA certificates in PEM format.
 	CaFile string
 
@@ -82,6 +84,12 @@ type Config struct {
 
 	// Timeout is connection timeout
 	Timeout time.Duration
+
+	// DefaultTransport enables [http.Transport] for connection pooling
+	DefaultTransport bool
+
+	// ConnTraceEnabled
+	ConnTraceEnabled bool
 }
 
 func DefaultConfig() *Config {
@@ -91,78 +99,5 @@ func DefaultConfig() *Config {
 		VerifyMode:        VerifyPeer,
 		CertificateChecks: X509CheckTimeValidity,
 		Timeout:           30 * time.Second,
-	}
-}
-
-type ConfigOption func(*Config)
-
-// WithCaFile sets the CA file path.
-func WithCaFile(caFile string) ConfigOption {
-	return func(c *Config) {
-		c.CaFile = caFile
-		c.CaPath = filepath.Dir(caFile)
-	}
-}
-
-// WithMinVersion sets the minimum TLS version.
-func WithMinVersion(version int64) ConfigOption {
-	return func(c *Config) {
-		c.MinVersion = version
-	}
-}
-
-// WithMaxVersion sets the maximum TLS version.
-func WithMaxVersion(version int64) ConfigOption {
-	return func(c *Config) {
-		c.MaxVersion = version
-	}
-}
-
-// WithTLSMethod sets the TLS method.
-func WithTLSMethod(method Method) ConfigOption {
-	return func(c *Config) {
-		c.TLSMethod = method
-	}
-}
-
-// WithVerifyMode sets the certificate verification mode.
-func WithVerifyMode(mode VerifyMode) ConfigOption {
-	return func(c *Config) {
-		c.VerifyMode = mode
-	}
-}
-
-// WithCertificateChecks sets the certificate verification flags.
-func WithCertificateChecks(checks X509VerifyFlags) ConfigOption {
-	return func(c *Config) {
-		c.CertificateChecks = checks
-	}
-}
-
-// WithSessionTicketsDisabled disables session ticket support.
-func WithSessionTicketsDisabled() ConfigOption {
-	return func(c *Config) {
-		c.SessionTicketsDisabled = true
-	}
-}
-
-// WithSessionCacheDisabled disables session caching.
-func WithSessionCacheDisabled() ConfigOption {
-	return func(c *Config) {
-		c.SessionCacheDisabled = true
-	}
-}
-
-// WithRenegotiationDisabled disables renegotiation.
-func WithRenegotiationDisabled() ConfigOption {
-	return func(c *Config) {
-		c.RenegotiationDisabled = true
-	}
-}
-
-// WithCompressionDisabled disables TLS compression.
-func WithCompressionDisabled() ConfigOption {
-	return func(c *Config) {
-		c.CompressionDisabled = true
 	}
 }

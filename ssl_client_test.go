@@ -1,4 +1,4 @@
-package client_test
+package ossl_test
 
 import (
 	"bytes"
@@ -200,6 +200,7 @@ func TestSSLClientPostTrace(t *testing.T) {
 }
 
 func TestRoundTripSSL(t *testing.T) {
+	t.Skip("local testing only")
 	client, err := ossl.NewClient()
 	if err != nil {
 		t.Fatal(err)

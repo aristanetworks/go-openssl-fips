@@ -1,26 +1,46 @@
-package client
+package ossl
 
 import (
 	"bufio"
-	"context"
+	"compress/gzip"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
 )
 
-type SSLTransport struct {
-	ctx    *SSLContext
-	dialer *SSLDialer
+type Transport struct {
+	Dialer             *Dialer
+	DisableCompression bool
 }
 
 // RoundTrip is used to do a single HTTP transaction using openssl
-func (t *SSLTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	address := net.JoinHostPort(req.URL.Hostname(), req.URL.Port())
-	conn, err := t.dialer.DialTLSContext(context.Background(), "tcp", address)
+func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	port := req.URL.Port()
+	if port == "" {
+		port = "443"
+	}
+	address := net.JoinHostPort(req.URL.Hostname(), port)
+	conn, err := t.Dialer.DialFn(req.Context(), address)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+
+	if deadline, ok := req.Context().Deadline(); ok {
+		conn.SetDeadline(deadline)
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		select {
+		case <-req.Context().Done():
+			conn.Close()
+		case <-done:
+		}
+	}()
 
 	b, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
@@ -33,5 +53,44 @@ func (t *SSLTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if !t.DisableCompression && resp.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		// Wrap the gzip reader with a closer that also closes the connection
+		resp.Body = &gzipReaderWithClose{
+			conn:   conn,
+			reader: gzReader,
+		}
+		resp.Header.Del("Content-Encoding")
+		resp.Header.Del("Content-Length")
+		resp.ContentLength = -1
+		resp.Uncompressed = true
+	} else {
+		defer conn.Close()
+	}
 	return resp, nil
+}
+
+// gzipReaderWithConnClose is a custom io.ReadCloser that closes the
+// underlying gzip reader and the connection
+type gzipReaderWithClose struct {
+	reader io.Reader
+	conn   io.Closer
+}
+
+func (gz *gzipReaderWithClose) Read(p []byte) (n int, err error) {
+	return gz.reader.Read(p)
+}
+
+func (gz *gzipReaderWithClose) Close() error {
+	if closer, ok := gz.reader.(io.Closer); ok {
+		err := closer.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return gz.conn.Close()
 }

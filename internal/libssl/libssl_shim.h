@@ -286,6 +286,7 @@ DEFINEFUNC(GO_SSL_PTR, SSL_new, (GO_SSL_CTX_PTR ctx), (ctx)) \
 DEFINEFUNC(void, SSL_free, (GO_SSL_PTR ctx), (ctx)) \
 DEFINEFUNC(void, SSL_clear, (GO_SSL_PTR ctx), (ctx)) \
 DEFINEFUNC(int, SSL_set_fd, (GO_SSL_PTR ssl, int fd), (ssl, fd)) \
+DEFINEFUNC(int, SSL_get_fd, (GO_SSL_PTR ssl), (ssl)) \
 DEFINEFUNC(int, SSL_set_wfd, (GO_SSL_PTR ssl, int fd), (ssl, fd)) \
 DEFINEFUNC(int, SSL_set_rfd, (GO_SSL_PTR ssl, int fd), (ssl, fd)) \
 DEFINEFUNC(int, SSL_connect, (GO_SSL_PTR ssl), (ssl)) \

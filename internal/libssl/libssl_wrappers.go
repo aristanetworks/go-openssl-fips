@@ -80,7 +80,7 @@ func SSLCtxSetMaxProtoVersion(ctx *SSLCtx, version int64) error {
 	if ctx == nil {
 		return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version: SSL_CTX is nil")
 	}
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		r := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_SET_MAX_PROTO_VERSION, C.long(version), nil)
 		if r != 1 {
 			return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version")
@@ -95,7 +95,7 @@ func SSLCtxSetMinProtoVersion(ctx *SSLCtx, version int64) error {
 	if ctx == nil {
 		return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version: SSL_CTX is nil")
 	}
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		r := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_SET_MIN_PROTO_VERSION, C.long(version), nil)
 		if r != 1 {
 			return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version")
@@ -134,7 +134,7 @@ func SSLCtxSetMode(ctx *SSLCtx, mode int64) error {
 	if ctx == nil {
 		return newOpenSSLError("libssl: SSL_CTX_set_mode: SSL_CTX is nil")
 	}
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		oldMask := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_MODE, 0, nil)
 		newMask := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_MODE, C.long(mode), nil)
 		if oldMask != 0 && oldMask == newMask {
@@ -327,7 +327,7 @@ func SSLWriteEx(ssl *SSL, req []byte) (int, error) {
 	}
 	cBytes := C.CBytes(req)
 	defer C.free(cBytes)
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		var written C.size_t
 		r := C.go_openssl_SSL_write_ex(
 			ssl.inner,
@@ -353,7 +353,7 @@ func SSLReadEx(ssl *SSL, size int64) ([]byte, int, error) {
 	}
 	cBuf := C.malloc(C.size_t(size))
 	defer C.free(cBuf)
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		var readBytes C.size_t
 		r := C.go_openssl_SSL_read_ex(
 			ssl.inner,
@@ -405,7 +405,7 @@ func SSLSetMode(ssl *SSL, mode int64) error {
 	if ssl == nil {
 		return newOpenSSLError("libssl: SSL_set_mode: SSL is nil")
 	}
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		oldMask := C.go_openssl_SSL_ctrl(ssl.inner, C.GO_SSL_CTRL_MODE, 0, nil)
 		newMask := C.go_openssl_SSL_ctrl(ssl.inner, C.GO_SSL_CTRL_MODE, C.long(mode), nil)
 		if oldMask != 0 && oldMask == newMask {
@@ -419,7 +419,7 @@ func SSLSet1Host(ssl *SSL, hostname string) error {
 	if ssl == nil {
 		return newOpenSSLError("libssl: SSL_set1_host: SSL is nil")
 	}
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		cHostname := C.CString(hostname)
 		defer C.free(unsafe.Pointer(cHostname))
 		r := C.go_openssl_SSL_set1_host(ssl.inner, cHostname)
@@ -482,9 +482,9 @@ func X509VerifyParamSetFlags(param *X509VerifyParam, flags int64) error {
 	if param == nil {
 		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags: X509_VERIFY_PARAM is nil")
 	}
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
-		return fmt.Errorf("X509_VERIFY_PARAM_set_flags is not available in OpenSSL 1.1.0 and later")
-	}
+	// if versionAtOrAbove(1, 1, 0) {
+	// 	return fmt.Errorf("X509_VERIFY_PARAM_set_flags is not available in OpenSSL 1.1.0 and later")
+	// }
 	result := C.go_openssl_X509_VERIFY_PARAM_set_flags(param.inner, C.long(flags))
 	if result != 1 {
 		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags")
@@ -498,7 +498,7 @@ func X509VerifyParamSet1Host(param *X509VerifyParam, hostname string) error {
 	if param == nil {
 		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host: X509_VERIFY_PARAM is nil")
 	}
-	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
+	if versionAtOrAbove(1, 1, 0) {
 		return fmt.Errorf("libssl: X509_VERIFY_PARAM_set1_host is not available in OpenSSL 1.1.0 and later")
 	}
 
@@ -565,16 +565,16 @@ func SSLSetTLSExtHostName(ssl *SSL, name string) error {
 	return nil
 }
 
-func SSLGetVerifyResult(ssl *SSL) (int64, error) {
+func SSLGetVerifyResult(ssl *SSL) error {
 	if ssl == nil {
-		return -1, newOpenSSLError("libssl: SSL_get_verify_result: SSL is nil")
+		return newOpenSSLError("libssl: SSL_get_verify_result: SSL is nil")
 	}
 	res := int64(C.go_openssl_SSL_get_verify_result(ssl.inner))
 	if res != X509_V_OK {
-		return -1, newOpenSSLError(fmt.Sprintf("libssl: SSL_get_verify_result: %s",
+		return newOpenSSLError(fmt.Sprintf("libssl: SSL_get_verify_result: %s",
 			X509VerifyCertErrorString(res)))
 	}
-	return res, nil
+	return nil
 }
 
 func X509VerifyCertErrorString(n int64) string {
@@ -626,180 +626,37 @@ func SSLSessionFree(session *SSLSession) error {
 	return nil
 }
 
-type BIO struct {
-	inner C.GO_BIO_PTR
-}
-
-type BIOMethod struct {
-	inner C.GO_BIO_METHOD_PTR
-}
-
-func NewBioMethod() *BIOMethod {
-	r := C.go_openssl_BIO_s_socket()
-	return &BIOMethod{inner: r}
-}
-
-// BIONew creates a new BIO
-func BIONew(method *BIOMethod) (*BIO, error) {
-	if method == nil {
-		return nil, newOpenSSLError("libssl: BIO_new: method is nil")
+func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) error {
+	if ssl == nil {
+		return newOpenSSLError("libssl: dial_host: SSL is nil")
 	}
-	bio := C.go_openssl_BIO_new(method.inner)
-	if bio == nil {
-		return nil, newOpenSSLError("libssl: BIO_new")
+	callmode := 0
+	if !versionAtOrAbove(1, 1, 0) {
+		callmode = 1
 	}
-	return &BIO{inner: bio}, nil
-}
-
-// BIOSocketNew creates a new socket BIO
-func BIOSocketNew() (*BIO, error) {
-	method := NewBioMethod()
-	if method == nil {
-		return nil, newOpenSSLError("libssl: BIO_s_socket")
-	}
-	return BIONew(method)
-}
-
-// BIOSetFd sets the file descriptor for a BIO
-func BIOSetFd(b *BIO, fd int, flags int64) error {
-	if b == nil {
-		return newOpenSSLError("libssl: BIO_set_fd: BIO is nil")
-	}
-	if r := C.go_openssl_BIO_int_ctrl(
-		b.inner,
-		C.GO_BIO_C_SET_FD,
-		C.long(flags),
-		C.int(fd)); r != 1 {
-		return newOpenSSLError("libssl: BIO_set_fd")
-	}
-	return nil
-}
-
-type BIOAddrInfo struct {
-	inner C.GO_BIO_ADDRINFO_PTR
-}
-
-type BIOAddr struct {
-	inner C.GO_BIO_ADDR_PTR
-}
-
-// BIOLookupEx performs address lookup for the given host and service
-func BIOLookupEx(hostname, service string, lookupType, family, socktype, protocol int) (*BIOAddrInfo, error) {
-	if hostname == "" {
-		return nil, newOpenSSLError("libssl: BIO_lookup_ex: hostname is empty")
-	}
-	cHostname := C.CString(hostname)
-	defer C.free(unsafe.Pointer(cHostname))
-	cService := C.CString(service)
-	defer C.free(unsafe.Pointer(cService))
-
-	var addrInfo BIOAddrInfo
-	if r := C.go_openssl_BIO_lookup_ex(
-		cHostname,
-		cService,
-		C.int(lookupType),
-		C.int(family),
-		C.int(socktype),
-		C.int(protocol),
-		addrInfo.inner); r != 1 {
-		return nil, newOpenSSLError("libssl: BIO_lookup_ex")
-	}
-	return &addrInfo, nil
-}
-
-// BIOAddrInfoNext returns the next address info in the chain
-func BIOAddrInfoNext(addrInfo *BIOAddrInfo) *BIOAddrInfo {
-	if addrInfo == nil {
-		return nil
-	}
-	next := C.go_openssl_BIO_ADDRINFO_next(addrInfo.inner)
-	if next == nil {
-		return nil
-	}
-	return &BIOAddrInfo{inner: next}
-}
-
-// BIOSocket creates a new socket
-func BIOSocket(family, socktype, protocol, options int) (int, error) {
-	sock := int(C.go_openssl_BIO_socket(C.int(family), C.int(socktype), C.int(protocol), C.int(options)))
-	if sock == -1 {
-		return -1, newOpenSSLError("libssl: BIO_socket")
-	}
-	return sock, nil
-}
-
-// BIOAddrInfoFamily returns the address family from address info
-func BIOAddrInfoFamily(addrInfo *BIOAddrInfo) int {
-	if addrInfo == nil {
-		return -1
-	}
-	return int(C.go_openssl_BIO_ADDRINFO_family(addrInfo.inner))
-}
-
-// BIOConnect connects a socket to an address
-func BIOConnect(sock int, addr *BIOAddr, options int) error {
-	if addr == nil {
-		return newOpenSSLError("libssl: BIO_connect: address is nil")
-	}
-	if r := C.go_openssl_BIO_connect(C.int(sock), addr.inner, C.int(options)); r != 1 {
-		return newOpenSSLError("libssl: BIO_connect")
-	}
-	return nil
-}
-
-// BIOAddrInfoAddress returns the address from address info
-func BIOAddrInfoAddress(addrInfo *BIOAddrInfo) (*BIOAddr, error) {
-	if addrInfo == nil {
-		return nil, newOpenSSLError("libssl: BIO_ADDRINFO_address: address info is nil")
-	}
-	addr := C.go_openssl_BIO_ADDRINFO_address(addrInfo.inner)
-	if addr == nil {
-		return nil, newOpenSSLError("libssl: BIO_ADDRINFO_address")
-	}
-	return &BIOAddr{inner: addr}, nil
-}
-
-// BIOCloseSocket closes a socket
-func BIOCloseSocket(sock int) error {
-	if r := C.go_openssl_BIO_closesocket(C.int(sock)); r != 0 {
-		return newOpenSSLError("libssl: BIO_closesocket")
-	}
-	return nil
-}
-
-// BIOSocketNonBlocking sets a socket to non-blocking mode
-func BIOSocketNonBlocking(sock int, mode int) error {
-	if r := C.go_openssl_BIO_socket_nbio(C.int(sock), C.int(mode)); r != 1 {
-		return newOpenSSLError("libssl: BIO_socket_nbio")
-	}
-	return nil
-}
-
-// BIOAddrInfoFree frees address info structure
-func BIOAddrInfoFree(addrInfo *BIOAddrInfo) error {
-	if addrInfo == nil {
-		return newOpenSSLError("libssl: BIO_ADDRINFO_free: address info is nil")
-	}
-	C.go_openssl_BIO_ADDRINFO_free(addrInfo.inner)
-	return nil
-}
-
-func CreateBioSocket(hostname, port string, family, mode int) (*BIO, error) {
 	cHost := C.CString(hostname)
 	cPort := C.CString(port)
 	defer C.free(unsafe.Pointer(cHost))
 	defer C.free(unsafe.Pointer(cPort))
-	bio := C.go_openssl_create_socket_bio(cHost, cPort, C.int(family), C.int(mode))
-	if bio == nil {
-		return nil, newOpenSSLError("libssl: create_bio_socket: BIO is nil")
+	if r := C.go_openssl_dial_host(
+		ssl.inner,
+		cHost,
+		cPort,
+		C.int(family),
+		C.int(mode),
+		C.int(callmode)); r != 0 {
+		return newSSLError("libssl: dial_host", SSLGetError(ssl, int(r)))
 	}
-	return &BIO{inner: bio}, nil
+	return nil
 }
 
-func SSLSetBio(ssl *SSL, rbio *BIO, wbio *BIO) error {
-	if ssl == nil || rbio == nil || wbio == nil {
-		return newOpenSSLError("libssl: SSL_set_bio: one of SSL or BIO is nil")
+func SSLGetFd(ssl *SSL) (int, error) {
+	if ssl == nil {
+		return 0, newOpenSSLError("libssl: SSL_get_fd: SSL is nil")
 	}
-	C.go_openssl_SSL_set_bio(ssl.inner, rbio.inner, wbio.inner)
-	return nil
+	r := C.go_openssl_SSL_get_fd(ssl.inner)
+	if r == -1 {
+		return int(r), newSSLError("libssl: SSL_get_fd", SSLGetError(ssl, int(r)))
+	}
+	return int(r), nil
 }

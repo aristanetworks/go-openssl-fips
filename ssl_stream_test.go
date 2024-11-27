@@ -1,4 +1,4 @@
-package client_test
+package ossl_test
 
 import (
 	"encoding/json"
@@ -43,7 +43,7 @@ func TestStreamJSON(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		n             int // number of messages to stream
+		n             int
 		expectSuccess bool
 	}{
 		{"Stream 5 messages", 5, true},

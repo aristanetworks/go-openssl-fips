@@ -1,13 +1,14 @@
-package client
+package ossl
 
 import (
 	"context"
 	"net"
+	"syscall"
 	"time"
 )
 
-// SSLDialer holds options for both SSL_CTX and SSL struct and DialTLSContext
-type SSLDialer struct {
+// Dialer holds options for both SSL_CTX and SSL struct and DialTLSContext
+type Dialer struct {
 	// Timeout is the maximum amount of time a dial will wait for
 	// a connect to complete. If Deadline is also set, it may fail
 	// earlier.
@@ -28,53 +29,42 @@ type SSLDialer struct {
 	// as with the Timeout option.
 	Deadline time.Time
 
-	// Cancel is an optional channel whose closure indicates that
-	// the dial should be canceled. Not all types of dials support
-	// cancellation.
-	//
-	// Deprecated: Use DialContext instead.
-	Cancel <-chan struct{}
-
-	// TLSConfig is the dialing Config for ossl.Conn
-	TLSConfig *Config
+	// Config is the dialing Config for [Conn]
+	Config *Config
 
 	// SSLContext
 	ctx *SSLContext
 }
 
 // DefaultDialer returns the default OpenSSL TLS dialer.
-func DefaultDialer(ctx *SSLContext, c *Config) *SSLDialer {
+func DefaultDialer(ctx *SSLContext, c *Config) *Dialer {
 	if c == nil {
 		c = DefaultConfig()
 	}
-	return &SSLDialer{
-		ctx:       ctx,
-		TLSConfig: c,
-		Timeout:   30 * time.Second,
+	return &Dialer{
+		ctx:     ctx,
+		Config:  c,
+		Timeout: 30 * time.Second,
 	}
 }
 
-// DialTLSContext specifies an optional dial function for creating
-// TLS connections for non-proxied HTTPS requests.
-//
-// If DialTLSContext is nil (and the deprecated DialTLS below is also nil),
-// DialContext and TLSClientConfig are used.
-//
-// If DialTLSContext is set, the Dial and DialContext hooks are not used for HTTPS
-// requests and the TLSClientConfig and TLSHandshakeTimeout
-// are ignored. The returned net.Conn is assumed to already be
-// past the TLS handshake.
-func (d *SSLDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	// log.Printf("Starting dial to %s", addr)
-	// defer log.Printf("Completed dial to %s", addr)
-	// dialer := net.Dialer{
-	// 	Timeout:  d.Timeout,
-	// 	Deadline: d.Deadline,
-	// 	Cancel:   d.Cancel,
-	// }
-	// conn, err := dialer.DialContext(ctx, network, addr)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	return NewConn(d.ctx, addr, d.TLSConfig)
+// DialFn specifies a dial function for creating TLS connections.
+// TODO: should use the context Deadline
+func (d *Dialer) DialFn(ctx context.Context, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ssl, err := NewSSL(d.ctx, d.Config)
+	if err != nil {
+		return nil, err
+	}
+	if err := ssl.DialHost(host, port, syscall.AF_INET, 0); err != nil {
+		return nil, err
+	}
+	return NewConn(ssl, addr, d.Config)
+}
+
+func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return d.DialFn(ctx, addr)
 }

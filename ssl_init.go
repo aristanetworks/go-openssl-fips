@@ -1,4 +1,4 @@
-package client
+package ossl
 
 import (
 	"errors"
@@ -12,6 +12,9 @@ var (
 
 // Init should be called before any calls into libssl
 func Init(version string) error {
+	if libsslInit {
+		return nil
+	}
 	if version == "" {
 		version = libssl.GetVersion()
 	}

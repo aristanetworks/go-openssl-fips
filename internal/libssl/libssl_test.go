@@ -174,12 +174,8 @@ func TestBlockingClient(t *testing.T) {
 	// Perform the SSL handshake
 	if err := libssl.SSLConnect(ssl); err != nil {
 		t.Error("Failed to connect to the server:", err)
-		if res, err := libssl.SSLGetVerifyResult(ssl); err != nil || res != libssl.X509_V_OK {
-			if err != nil {
-				t.Error("Verify error:", err)
-			} else {
-				t.Error("Verify error:")
-			}
+		if err := libssl.SSLGetVerifyResult(ssl); err != nil {
+			t.Error("Verify error:", err)
 		}
 		t.Fatal(err)
 	}
