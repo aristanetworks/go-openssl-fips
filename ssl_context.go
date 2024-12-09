@@ -2,7 +2,6 @@ package ossl
 
 import (
 	"fmt"
-	"runtime"
 	"sync"
 
 	"github.com/golang-fips/openssl/v2/internal/libssl"
@@ -30,7 +29,6 @@ func NewSSLContext(c *Config) (*SSLContext, error) {
 			libssl.SSLCtxFree(ctx)
 			return err
 		}
-		runtime.SetFinalizer(sslCtx, nil)
 		return nil
 	}); err != nil {
 		return nil, err

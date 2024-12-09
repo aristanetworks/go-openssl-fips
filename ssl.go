@@ -34,7 +34,6 @@ func NewSSL(sslCtx *SSLContext, c *Config) (*SSL, error) {
 			libssl.SSLFree(s)
 			return err
 		}
-		// runtime.SetFinalizer(s, nil)
 		return nil
 	}); err != nil {
 		return nil, err
@@ -145,10 +144,7 @@ func (s *SSL) Close() error {
 	})
 }
 
-// Free will free up the underlying [libssl.SSL] C struct and any resources it has allocated.
-// TODO: this should only be free'd if 1) the SSLShutdown fails and 2) there is no in-flight
-// read or write operation. This will cause a panic. Not sure of a safe way to clean this up in
-// that case.
+// Free will free the [libssl.SSL] C allocated object.
 func (s *SSL) Free() error {
 	s.freeOnce.Do(func() {
 		s.freeErr = libssl.SSLFree(s.ssl)

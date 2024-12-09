@@ -14,6 +14,7 @@ var (
 	ErrLoadLibSslFailed  = errors.New("ossl: libssl failed to load")
 	ErrInvalidOption     = errors.New("ossl: invalid option")
 	ErrInvalidSSLContext = errors.New("ossl: invalid SSLContext")
+	ErrShutdown          = errors.New("ossl: protocol is shutdown")
 )
 
 // newConnError converts SSL errors to appropriate net.OpError with syscall errors

@@ -2,11 +2,11 @@ package ossl
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -87,10 +87,6 @@ type opResult struct {
 	n   int
 	err error
 }
-
-var (
-	errShutdown = errors.New("tls: protocol is shutdown")
-)
 
 func (c *Conn) opWithDeadline(b []byte, timer *atomic.Pointer[deadlineTimer],
 	op func([]byte) (int, error)) (int, error) {
@@ -183,7 +179,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 	defer c.out.Unlock()
 
 	if c.closeNotifySent {
-		return 0, errShutdown
+		return 0, ErrShutdown
 	}
 
 	n, err := c.opWithDeadline(b, &c.writeTimer, c.ssl.Write)
@@ -233,6 +229,10 @@ func (c *Conn) closeNotify() error {
 		_, err = c.opWithDeadline(nil, &c.writeTimer, func(b []byte) (int, error) {
 			return 0, c.ssl.Close()
 		})
+		// Free the connection resources explictly in the case shutdown fails
+		if err != nil {
+			runtime.SetFinalizer(c.ssl, func(s *SSL) { s.Free() })
+		}
 		c.closeNotifySent = true
 		c.closed.Store(true)
 		// Any subsequent writes will fail.
