@@ -482,9 +482,6 @@ func X509VerifyParamSetFlags(param *X509VerifyParam, flags int64) error {
 	if param == nil {
 		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags: X509_VERIFY_PARAM is nil")
 	}
-	// if versionAtOrAbove(1, 1, 0) {
-	// 	return fmt.Errorf("X509_VERIFY_PARAM_set_flags is not available in OpenSSL 1.1.0 and later")
-	// }
 	result := C.go_openssl_X509_VERIFY_PARAM_set_flags(param.inner, C.long(flags))
 	if result != 1 {
 		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags")
@@ -630,9 +627,8 @@ func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) error {
 	if ssl == nil {
 		return newOpenSSLError("libssl: dial_host: SSL is nil")
 	}
-	callmode := 0
 	if !versionAtOrAbove(1, 1, 0) {
-		callmode = 1
+		return newOpenSSLError("libssl: dial_host: not implemented for OpenSSL < 1.1.1")
 	}
 	cHost := C.CString(hostname)
 	cPort := C.CString(port)
@@ -643,8 +639,7 @@ func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) error {
 		cHost,
 		cPort,
 		C.int(family),
-		C.int(mode),
-		C.int(callmode)); r != 0 {
+		C.int(mode)); r != 0 {
 		return newSSLError("libssl: dial_host", SSLGetError(ssl, int(r)))
 	}
 	return nil

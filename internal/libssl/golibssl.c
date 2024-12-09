@@ -216,7 +216,7 @@ go_openssl_version_patch(void* handle)
 
 // go_openssl_dial_host initializes the SSL connection to the host.
 int
-go_openssl_dial_host(GO_SSL_PTR ssl, const char *hostname, const char *port, int family, int mode, int callmode)
+go_openssl_dial_host(GO_SSL_PTR ssl, const char *hostname, const char *port, int family, int mode)
 {
     int r = 0;
 
@@ -236,18 +236,7 @@ go_openssl_dial_host(GO_SSL_PTR ssl, const char *hostname, const char *port, int
         return r;
     }
 
-    // TODO: Remove or improve this as it is unclear
-    if (callmode == 0) {
-        // openssl > 1.1.x
-        r = go_openssl_SSL_set1_host(ssl, hostname);
-    } else {
-        // openssl <= 1.1.0
-        GO_X509_VERIFY_PARAM_PTR param = go_openssl_SSL_get0_param(ssl);
-        if (param == NULL) {
-            return -1;
-        }
-        r = go_openssl_X509_VERIFY_PARAM_set1_host(param, hostname, (size_t)strlen(hostname));
-    }
+    r = go_openssl_SSL_set1_host(ssl, hostname);
     if (r != 1) {
         return r;
     }
