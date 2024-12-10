@@ -95,14 +95,10 @@ func (c *Conn) opWithDeadline(b []byte, timer *atomic.Pointer[deadlineTimer],
 	op func([]byte) (int, error)) (int, error) {
 	c.trace("Deadline begin")
 	defer c.trace("Deadline end")
-	t := timer.Load()
-	if t == nil || t.deadline.IsZero() {
-		return op(b)
-	}
 	tStart := time.Now()
 	ctx, cancel := c.deadlineContext(timer)
 	defer cancel()
-	resultCh := make(chan opResult, 1)
+	resultCh := make(chan opResult)
 	go func() {
 		n, err := op(b)
 		resultCh <- opResult{n, err}
