@@ -49,16 +49,17 @@ type Conn struct {
 }
 
 func (c *Conn) trace(msg string) {
-	if c.enableTrace {
-		c.logger.Printf(
-			"%s %-20s %-20s %-20s %-5s",
-			"[SSLConn]",
-			msg,
-			fmt.Sprintf("local=%+v", c.local),
-			fmt.Sprintf("remote=%+v", c.remote),
-			fmt.Sprintf("conn=%+v", c.ssl.sockfd),
-		)
+	if !c.enableTrace {
+		return
 	}
+	c.logger.Printf(
+		"%s %-20s %-20s %-20s %-5s",
+		"[SSLConn]",
+		msg,
+		fmt.Sprintf("local=%+v", c.local),
+		fmt.Sprintf("remote=%+v", c.remote),
+		fmt.Sprintf("conn=%+v", c.ssl.sockfd),
+	)
 }
 
 type deadlineTimer struct {
