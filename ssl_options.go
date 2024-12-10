@@ -2,6 +2,7 @@ package ossl
 
 import "path/filepath"
 
+// ConfigOption is used to configure the [Client] and its [SSL] connections.
 type ConfigOption func(*Config)
 
 // WithCaFile sets the CA file path.

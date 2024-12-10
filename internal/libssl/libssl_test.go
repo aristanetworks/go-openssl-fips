@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-fips/openssl/v2/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 func TestMain(m *testing.M) {

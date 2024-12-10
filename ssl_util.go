@@ -3,7 +3,7 @@ package ossl
 import (
 	"runtime"
 
-	"github.com/golang-fips/openssl/v2/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 // runWithLockedOSThread ensures the given function executes with the goroutine locked to an OS thread.

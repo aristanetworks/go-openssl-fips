@@ -15,14 +15,14 @@ type Transport struct {
 	DisableCompression bool
 }
 
-// RoundTrip is used to do a single HTTP transaction using openssl
+// RoundTrip does a single HTTP transaction. It dials a new [SSL] connection every roundtrip.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	port := req.URL.Port()
 	if port == "" {
 		port = "443"
 	}
 	address := net.JoinHostPort(req.URL.Hostname(), port)
-	conn, err := t.Dialer.DialFn(req.Context(), address)
+	conn, err := t.Dialer.Dial(req.Context(), address)
 	if err != nil {
 		return nil, err
 	}

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	ossl "github.com/golang-fips/openssl/v2"
-	"github.com/golang-fips/openssl/v2/internal/testutils"
+	"github.com/aristanetworks/go-openssl-fips/ossl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
 )
 
 func init() {
@@ -44,7 +44,7 @@ func TestSSLConn(t *testing.T) {
 	}
 	defer ctx.Free()
 	d := ossl.DefaultDialer(ctx, c)
-	conn, err := d.DialFn(context.Background(), net.JoinHostPort(host, port))
+	conn, err := d.Dial(context.Background(), net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestSSLConnReadDeadline(t *testing.T) {
 	}
 	defer ctx.Free()
 	d := ossl.DefaultDialer(ctx, c)
-	conn, err := d.DialFn(context.Background(), net.JoinHostPort(host, port))
+	conn, err := d.Dial(context.Background(), net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
 	}

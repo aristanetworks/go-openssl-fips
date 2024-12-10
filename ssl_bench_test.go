@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"testing"
 
-	ossl "github.com/golang-fips/openssl/v2"
+	"github.com/aristanetworks/go-openssl-fips/ossl"
 )
 
 const URL = "https://httpbingo.org/"

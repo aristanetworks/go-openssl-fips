@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	ossl "github.com/golang-fips/openssl/v2"
-	"github.com/golang-fips/openssl/v2/internal/testutils"
+	"github.com/aristanetworks/go-openssl-fips/ossl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
 )
 
 func init() {

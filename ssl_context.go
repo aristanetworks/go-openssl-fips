@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/golang-fips/openssl/v2/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
+// SSLContext stores configuration options used to create [SSL] connections.
 type SSLContext struct {
 	ctx      *libssl.SSLCtx
 	freeOnce sync.Once
 	freeErr  error
 }
 
+// NewSSLContext creates a new [SSLContext] using the supplied [Config].
 func NewSSLContext(c *Config) (*SSLContext, error) {
 	if err := Init(c.LibsslVersion); err != nil {
 		return nil, err
@@ -36,6 +38,8 @@ func NewSSLContext(c *Config) (*SSLContext, error) {
 	return sslCtx, nil
 }
 
+// Free will free the C memory allocated by [SSLContext]. [SSLContext] should not be used after
+// calling free.
 func (c *SSLContext) Free() error {
 	c.freeOnce.Do(func() {
 		c.freeErr = libssl.SSLCtxFree(c.ctx)
@@ -43,6 +47,7 @@ func (c *SSLContext) Free() error {
 	return c.freeErr
 }
 
+// newSslCtx creates a new [libssl.SSLCtx] object from the TLS [Method].
 func newSslCtx(m Method) (*libssl.SSLCtx, error) {
 	var method *libssl.SSLMethod
 	var err error
@@ -82,16 +87,6 @@ func (s *SSLContext) apply(c *Config) error {
 	if err := libssl.SSLCtxSetOptions(s.ctx, options); err != nil {
 		return fmt.Errorf("failed to set SSL_CTX options: %w", err)
 	}
-
-	// libssl.SSLCtxSetReadAhead(s.ctx, 1)
-	// For non-blocking IO
-	// options = 0
-	// options |= libssl.SSL_MODE_ENABLE_PARTIAL_WRITE
-	// options |= libssl.SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER
-	// options |= libssl.SSL_MODE_AUTO_RETRY
-	// if err := libssl.SSLCtxSetMode(s.ctx, options); err != nil {
-	// 	return fmt.Errorf("failed to set SSL_CTX mode: %w", err)
-	// }
 
 	// Set verification mode
 	var verifyMode int

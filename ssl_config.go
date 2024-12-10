@@ -3,17 +3,20 @@ package ossl
 import (
 	"time"
 
-	"github.com/golang-fips/openssl/v2/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 // Method represents TLS method modes
 type Method int
 
 const (
+	// DefaultMethod is the TLS method
 	DefaultMethod Method = iota
 
+	// ClientMethod is the TLS client method
 	ClientMethod
 
+	// ServerMethod is the TLS server method
 	ServerMethod
 )
 
@@ -37,12 +40,18 @@ const (
 type X509VerifyFlags uint32
 
 const (
-	X509CheckTimeValidity  X509VerifyFlags = 1 << iota // Check certificate time validity
-	X509CheckCRL                                       // Check certificate revocation
-	X509CheckCRLAll                                    // Check entire certificate chain for revocation
-	X509StrictMode                                     // Enable strict certificate checking
-	X509AllowPartialChains                             // Allow partial certificate chains
-	X509TrustedFirst                                   // Prefer trusted certificates when building chain
+	// X509CheckTimeValidity checks certificate time validity
+	X509CheckTimeValidity X509VerifyFlags = 1 << iota
+	// X509CheckCRL checks certificate revocation
+	X509CheckCRL
+	// X509CheckCRLAll checks entire certificate chain for revocation
+	X509CheckCRLAll
+	// X509StrictMode enables strict certificate checking
+	X509StrictMode
+	// X509AllowPartialChains allows partial certificate chains
+	X509AllowPartialChains
+	// X509TrustedFirst prefers trusted certificates when building chain
+	X509TrustedFirst
 )
 
 type Config struct {
@@ -89,6 +98,7 @@ type Config struct {
 	ConnTraceEnabled bool
 }
 
+// DefaultConfig returns a [Config] with sane default options.
 func DefaultConfig() *Config {
 	return &Config{
 		TLSMethod:         ClientMethod,

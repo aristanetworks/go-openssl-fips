@@ -3,14 +3,15 @@ package ossl
 import (
 	"errors"
 
-	"github.com/golang-fips/openssl/v2/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 var (
 	libsslInit bool
 )
 
-// Init should be called before any calls into libssl
+// Init should be called before any calls into libssl. If the version string is empty, it will pick
+// the highest libssl.so version automatically.
 func Init(version string) error {
 	if libsslInit {
 		return nil

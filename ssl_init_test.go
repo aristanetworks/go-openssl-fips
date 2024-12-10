@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	ossl "github.com/golang-fips/openssl/v2"
+	"github.com/aristanetworks/go-openssl-fips/ossl"
 )
 
 func TestInitFailure(t *testing.T) {

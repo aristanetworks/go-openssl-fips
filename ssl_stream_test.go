@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	ossl "github.com/golang-fips/openssl/v2"
+	"github.com/aristanetworks/go-openssl-fips/ossl"
 )
 
 // Response represents each JSON object in the stream

@@ -6,9 +6,10 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/golang-fips/openssl/v2/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
+// SSL represents a single SSL connection. It inherits configuration options from [SSLContext].
 type SSL struct {
 	ssl      *libssl.SSL
 	freeOnce sync.Once
@@ -24,16 +25,12 @@ func NewSSL(sslCtx *SSLContext, c *Config) (*SSL, error) {
 	}
 	var ssl *SSL
 	if err := runWithLockedOSThread(func() error {
-		s, err := newSsl(sslCtx)
+		s, err := libssl.NewSSL(sslCtx.ctx)
 		if err != nil {
 			libssl.SSLFree(s)
 			return err
 		}
 		ssl = &SSL{ssl: s}
-		if err := ssl.apply(c); err != nil {
-			libssl.SSLFree(s)
-			return err
-		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -41,8 +38,8 @@ func NewSSL(sslCtx *SSLContext, c *Config) (*SSL, error) {
 	return ssl, nil
 }
 
-// DialHost will create a new BIO fd and connect to the host, can be either blocking (ioMode=0) or
-// non-blocking (ioMode=1).
+// DialHost will create a new BIO fd and connect to the host. It can be either blocking (mode=0) or
+// non-blocking (mode=1).
 func (s *SSL) DialHost(host, port string, family, ioMode int) error {
 	return runWithLockedOSThread(func() error {
 		return libssl.SSLDialHost(s.ssl, host, port, family, ioMode)
@@ -96,11 +93,12 @@ func zoneToString(zone int) string {
 	return fmt.Sprintf("%d", zone)
 }
 
+// CloseFD will close the [SSL] file descriptor using syscall.Close.
 func (s *SSL) CloseFD() error {
-	// Close the file descriptor using syscall.Close
 	return syscall.Close(s.sockfd)
 }
 
+// Read will read bytes into the buffer from the [SSL] connection.
 func (s *SSL) Read(b []byte) (int, error) {
 	var readBytes []byte
 	var numBytes int
@@ -119,21 +117,23 @@ func (s *SSL) Read(b []byte) (int, error) {
 	return numBytes, nil
 }
 
+// Write will write bytes from the buffer to the [SSL] connection.
 func (s *SSL) Write(b []byte) (int, error) {
-	var written int
+	var numBytes int
 	if err := runWithLockedOSThread(func() error {
 		n, err := libssl.SSLWriteEx(s.ssl, b)
 		if err != nil {
 			return err
 		}
-		written = n
+		numBytes = n
 		return nil
 	}); err != nil {
-		return written, err
+		return numBytes, err
 	}
-	return written, nil
+	return numBytes, nil
 }
 
+// Close will send a close-notify alert to the peer to gracefully shutdown the [SSL] connection.
 func (s *SSL) Close() error {
 	return runWithLockedOSThread(func() error {
 		err := libssl.SSLShutdown(s.ssl)
@@ -144,51 +144,10 @@ func (s *SSL) Close() error {
 	})
 }
 
-// Free will free the [libssl.SSL] C allocated object.
+// Free will free the C memory allocated by [SSL]. [SSL] should not be used after calling free.
 func (s *SSL) Free() error {
 	s.freeOnce.Do(func() {
 		s.freeErr = libssl.SSLFree(s.ssl)
 	})
 	return s.freeErr
-}
-
-func newSsl(sslCtx *SSLContext) (*libssl.SSL, error) {
-	ssl, err := libssl.NewSSL(sslCtx.ctx)
-	if err != nil {
-		return nil, err
-	}
-	return ssl, nil
-}
-
-func (s *SSL) apply(c *Config) error {
-	// TODO: Apply certificate verification flags
-	// var x509Flags int64
-	// if c.CertificateChecks&X509CheckTimeValidity != 0 {
-	// 	x509Flags |= libssl.X509_V_FLAG_USE_CHECK_TIME
-	// }
-	// if c.CertificateChecks&X509CheckCRL != 0 {
-	// 	x509Flags |= libssl.X509_V_FLAG_CRL_CHECK
-	// }
-	// if c.CertificateChecks&X509CheckCRLAll != 0 {
-	// 	x509Flags |= libssl.X509_V_FLAG_CRL_CHECK_ALL
-	// }
-	// if c.CertificateChecks&X509StrictMode != 0 {
-	// 	x509Flags |= libssl.X509_V_FLAG_X509_STRICT
-	// }
-	// if c.CertificateChecks&X509AllowPartialChains != 0 {
-	// 	x509Flags |= libssl.X509_V_FLAG_PARTIAL_CHAIN
-	// }
-	// if c.CertificateChecks&X509TrustedFirst != 0 {
-	// 	x509Flags |= libssl.X509_V_FLAG_TRUSTED_FIRST
-	// }
-
-	// verifyParam, err := libssl.SSLGet0Param(s.ssl)
-	// if err != nil {
-	// 	return err
-	// }
-	// if err := libssl.X509VerifyParamSetFlags(verifyParam, x509Flags); err != nil {
-	// 	return fmt.Errorf("failed to set verify flags: %w", err)
-	// }
-
-	return nil
 }

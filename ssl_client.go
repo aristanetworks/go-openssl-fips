@@ -5,13 +5,15 @@ import (
 )
 
 // Client is an [http.Client] that stores the [SSLContext] which is used to create
-// [SSL] connections by [Conn].
+// [SSL] connections by [Conn]. The caller is responsible for freeing the C memory allocated by
+// the [SSLContext] with [Client.Close].
 type Client struct {
 	http.Client
-	ctx *SSLContext
+	// Ctx is the [SSLContext] used for creating [SSL] connections.
+	Ctx *SSLContext
 }
 
-// NewClient returns a new [http.Client] using [Dialer.DialFn] to call into dynamically the
+// NewClient returns a new [http.Client] using [Dialer.Dial] to call into dynamically the
 // loaded libssl for [SSL] connections.
 func NewClient(opts ...ConfigOption) (*Client, error) {
 	config := DefaultConfig()
@@ -28,12 +30,10 @@ func NewClient(opts ...ConfigOption) (*Client, error) {
 			Dialer: d,
 		},
 	}
-	return &Client{Client: client, ctx: ctx}, nil
+	return &Client{Client: client, Ctx: ctx}, nil
 }
 
-// Close will free the [SSLContext] used to create [SSL] connections
-// WARNING: use [http.Client.CloseIdleConnections] only if you are sure all idle connections
-// are unused
+// Close will free the [SSLContext] used to create [SSL] connections.
 func (c *Client) Close() error {
-	return c.ctx.Free()
+	return c.Ctx.Free()
 }

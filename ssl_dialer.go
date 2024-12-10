@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Dialer holds options for both SSL_CTX and SSL struct and DialTLSContext
+// Dialer is used for dialing [SSL] connections.
 type Dialer struct {
 	// Timeout is the maximum amount of time a dial will wait for
 	// a connect to complete. If Deadline is also set, it may fail
@@ -29,42 +29,39 @@ type Dialer struct {
 	// as with the Timeout option.
 	Deadline time.Time
 
-	// Config is the dialing Config for [Conn]
+	// Config is the dialing Config for [Conn].
 	Config *Config
 
-	// SSLContext
-	ctx *SSLContext
+	// Ctx is the [SSLContext] used for creating [SSL] connections.
+	Ctx *SSLContext
 }
 
-// DefaultDialer returns the default OpenSSL TLS dialer.
+// DefaultDialer returns the [SSL] dialer with default [Config] options.
 func DefaultDialer(ctx *SSLContext, c *Config) *Dialer {
 	if c == nil {
 		c = DefaultConfig()
 	}
 	return &Dialer{
-		ctx:     ctx,
+		Ctx:     ctx,
 		Config:  c,
 		Timeout: 30 * time.Second,
 	}
 }
 
-// DialFn specifies a dial function for creating TLS connections.
-// TODO: should use the context Deadline
-func (d *Dialer) DialFn(ctx context.Context, addr string) (net.Conn, error) {
+// Dial specifies a dial function for creating [SSL] connections.
+// TODO: should use the context Deadline.
+func (d *Dialer) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
 	}
-	ssl, err := NewSSL(d.ctx, d.Config)
+	ssl, err := NewSSL(d.Ctx, d.Config)
 	if err != nil {
 		return nil, err
 	}
+	// Create a non-blocking connection
 	if err := ssl.DialHost(host, port, syscall.AF_INET, 0); err != nil {
 		return nil, err
 	}
 	return NewConn(ssl, addr, d.Config)
-}
-
-func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	return d.DialFn(ctx, addr)
 }

@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang-fips/openssl/v2/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 // Conn is used for writing to and reading from a libssl [SSL] connection.
@@ -68,7 +68,8 @@ type deadlineTimer struct {
 }
 
 // checkDeadline returns a context that expires when the deadline is reached
-func (c *Conn) deadlineContext(deadline *atomic.Pointer[deadlineTimer]) (context.Context, context.CancelFunc) {
+func (c *Conn) deadlineContext(deadline *atomic.Pointer[deadlineTimer]) (context.Context,
+	context.CancelFunc) {
 	d := deadline.Load()
 	if d == nil || d.deadline.IsZero() {
 		return context.Background(), func() {}
@@ -89,6 +90,7 @@ type opResult struct {
 	err error
 }
 
+// opWithDeadline will run the Read, Write, or Close operation with a deadline.
 func (c *Conn) opWithDeadline(b []byte, timer *atomic.Pointer[deadlineTimer],
 	op func([]byte) (int, error)) (int, error) {
 	c.trace("Deadline begin")
@@ -138,7 +140,7 @@ func NewConn(ssl *SSL, address string, config *Config) (*Conn, error) {
 	return c, nil
 }
 
-// Read will read bytes from the SSL connection.
+// Read will read bytes into the buffer from the [SSL] connection, wrapped in an optional deadline.
 func (c *Conn) Read(b []byte) (int, error) {
 	c.trace("Read begin")
 	defer c.trace("Read end")
@@ -159,7 +161,7 @@ func (c *Conn) Read(b []byte) (int, error) {
 	return n, nil
 }
 
-// Write will write bytes to the SSL connection.
+// Write will write bytes from the buffer to the [SSL] connection, wrapped in an optional deadline.
 func (c *Conn) Write(b []byte) (int, error) {
 	c.trace("Write begin")
 	defer c.trace("Write end")
@@ -190,6 +192,8 @@ func (c *Conn) Write(b []byte) (int, error) {
 	return n, nil
 }
 
+// Close will attempt to cleanly shutdown the [SSL] connection. It will free [SSL] resources in the
+// case of a shutdown failure.
 func (c *Conn) Close() error {
 	c.trace("Close begin")
 	defer c.trace("Close end")
@@ -213,6 +217,7 @@ func (c *Conn) Close() error {
 		// being used to break the Write and/or clean up resources and
 		// avoid sending the alertCloseNotify, which may block
 		// waiting on handshakeMutex or the c.out mutex.
+		// defer runtime.SetFinalizer(c.ssl, func(s *SSL) { s.Free() })
 		return c.ssl.CloseFD()
 	}
 	return c.closeNotify()
@@ -260,8 +265,8 @@ func (c *Conn) SetDeadline(t time.Time) error {
 	return c.SetWriteDeadline(t)
 }
 
-// SetReadDeadline sets the deadline for future [SSL] Read calls
-// and any currently-blocked [SSL] Read call.
+// SetReadDeadline sets the deadline for future [SSL.Read] calls
+// and any currently-blocked [SSL.Read] call.
 // A zero value for t means Read will not time out.
 func (c *Conn) SetReadDeadline(t time.Time) error {
 	c.trace("New rdeadline")
@@ -272,8 +277,8 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-// SetWriteDeadline sets the deadline for future [SSL] Write calls
-// and any currently-blocked [SSL] Write call.
+// SetWriteDeadline sets the deadline for future [SSL.Write] calls
+// and any currently-blocked [SSL.Write] call.
 // Even if write times out, it may return n > 0, indicating that
 // some of the data was successfully written.
 // A zero value for t means Write will not time out.
