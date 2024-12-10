@@ -31,17 +31,6 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		conn.SetDeadline(deadline)
 	}
 
-	done := make(chan struct{})
-	defer close(done)
-
-	go func() {
-		select {
-		case <-req.Context().Done():
-			conn.Close()
-		case <-done:
-		}
-	}()
-
 	b, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
 		return nil, err
