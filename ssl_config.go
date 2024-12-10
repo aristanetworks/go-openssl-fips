@@ -85,9 +85,6 @@ type Config struct {
 	// Timeout is connection timeout
 	Timeout time.Duration
 
-	// DefaultTransport enables [http.Transport] for connection pooling
-	DefaultTransport bool
-
 	// ConnTraceEnabled
 	ConnTraceEnabled bool
 }

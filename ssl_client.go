@@ -12,7 +12,7 @@ type Client struct {
 }
 
 // NewClient returns a new [http.Client] using [Dialer.DialFn] to call into dynamically the
-// loaded libssl for SSL connections.
+// loaded libssl for [SSL] connections.
 func NewClient(opts ...ConfigOption) (*Client, error) {
 	config := DefaultConfig()
 	for _, o := range opts {
@@ -27,11 +27,6 @@ func NewClient(opts ...ConfigOption) (*Client, error) {
 		Transport: &Transport{
 			Dialer: d,
 		},
-	}
-	if config.DefaultTransport {
-		client.Transport = &http.Transport{
-			DialTLSContext: d.DialTLSContext,
-		}
 	}
 	return &Client{Client: client, ctx: ctx}, nil
 }

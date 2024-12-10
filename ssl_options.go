@@ -75,14 +75,6 @@ func WithCompressionDisabled() ConfigOption {
 	}
 }
 
-// WithDefaultTransport will use the DialTLSContext with [http.Transport] to use its connection
-// pooling.
-func WithDefaultTransport() ConfigOption {
-	return func(c *Config) {
-		c.DefaultTransport = true
-	}
-}
-
 // WithLibsslVersion will dynamically load the libssl version.
 func WithLibsslVersion(version string) ConfigOption {
 	return func(c *Config) {
