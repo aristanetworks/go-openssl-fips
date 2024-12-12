@@ -5,27 +5,30 @@ import (
 	"net"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 // SSL represents a single SSL connection. It inherits configuration options from [SSLContext].
 type SSL struct {
-	ssl      *libssl.SSL
-	freeOnce sync.Once
-	freeErr  error
-	sockfd   int
+	ssl       *libssl.SSL
+	closeOnce sync.Once
+	closeErr  error
+	closed    bool
+	sockfd    int
+	rawConn   net.Conn
 }
 
 // NewSSL creates an [SSL] object using [SSLContext]. [SSL] is used for creating
 // a single TLS connection.
-func NewSSL(sslCtx *SSLContext, c *Config) (*SSL, error) {
-	if err := Init(c.LibsslVersion); err != nil {
-		return nil, err
+func NewSSL(ctx *SSLContext) (*SSL, error) {
+	if !libsslInit {
+		return nil, ErrNoLibSslInit
 	}
 	var ssl *SSL
 	if err := runWithLockedOSThread(func() error {
-		s, err := libssl.NewSSL(sslCtx.ctx)
+		s, err := libssl.NewSSL(ctx.ctx)
 		if err != nil {
 			libssl.SSLFree(s)
 			return err
@@ -38,16 +41,50 @@ func NewSSL(sslCtx *SSLContext, c *Config) (*SSL, error) {
 	return ssl, nil
 }
 
+func (s *SSL) SetFd(fd int) error {
+	return libssl.SetSSLFd(s.ssl, fd)
+}
+
 // DialHost will create a new BIO fd and connect to the host. It can be either blocking (mode=0) or
 // non-blocking (mode=1).
-func (s *SSL) DialHost(host, port string, family, ioMode int) error {
+func (s *SSL) DialHost(addr string, family, ioMode int) error {
+	if s.closed {
+		return s.closeErr
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
 	return runWithLockedOSThread(func() error {
 		return libssl.SSLDialHost(s.ssl, host, port, family, ioMode)
 	})
 }
 
+func (s *SSL) Dial(addr string) error {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+	// Get the raw file descriptor (this is a duplicate fd)
+	file, _ := conn.(*net.TCPConn).File()
+	fd := int(file.Fd())
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
+	if err := libssl.SSLConfigure(s.ssl, host, port, fd); err != nil {
+		return err
+	}
+	s.rawConn = conn
+	s.sockfd = fd
+	return nil
+}
+
 // GetAddrInfo will return the local and remote addresses of the [SSL] connection.
 func (s *SSL) GetAddrInfo() (local net.Addr, remote net.Addr, err error) {
+	if s.closed {
+		return nil, nil, s.closeErr
+	}
 	s.sockfd, err = libssl.SSLGetFd(s.ssl)
 	sockname, err := syscall.Getsockname(s.sockfd)
 	if err != nil {
@@ -95,11 +132,17 @@ func zoneToString(zone int) string {
 
 // CloseFD will close the [SSL] file descriptor using syscall.Close.
 func (s *SSL) CloseFD() error {
+	if s.closed {
+		return s.closeErr
+	}
 	return syscall.Close(s.sockfd)
 }
 
 // Read will read bytes into the buffer from the [SSL] connection.
 func (s *SSL) Read(b []byte) (int, error) {
+	if s.closeErr != nil {
+		return 0, s.closeErr
+	}
 	var readBytes []byte
 	var numBytes int
 	if err := runWithLockedOSThread(func() error {
@@ -117,8 +160,31 @@ func (s *SSL) Read(b []byte) (int, error) {
 	return numBytes, nil
 }
 
+func (s *SSL) LocalAddr() net.Addr {
+	return s.rawConn.LocalAddr()
+}
+
+func (s *SSL) RemoteAddr() net.Addr {
+	return s.rawConn.RemoteAddr()
+}
+
+func (s *SSL) SetDeadline(t time.Time) error {
+	return s.rawConn.SetDeadline(t)
+}
+
+func (s *SSL) SetReadDeadline(t time.Time) error {
+	return s.rawConn.SetReadDeadline(t)
+}
+
+func (s *SSL) SetWriteDeadline(t time.Time) error {
+	return s.rawConn.SetWriteDeadline(t)
+}
+
 // Write will write bytes from the buffer to the [SSL] connection.
 func (s *SSL) Write(b []byte) (int, error) {
+	if s.closed {
+		return 0, s.closeErr
+	}
 	var numBytes int
 	if err := runWithLockedOSThread(func() error {
 		n, err := libssl.SSLWriteEx(s.ssl, b)
@@ -133,8 +199,11 @@ func (s *SSL) Write(b []byte) (int, error) {
 	return numBytes, nil
 }
 
-// Close will send a close-notify alert to the peer to gracefully shutdown the [SSL] connection.
-func (s *SSL) Close() error {
+// Shutdown will send a close-notify alert to the peer to gracefully shutdown the [SSL] connection.
+func (s *SSL) Shutdown() error {
+	if s.closed {
+		return s.closeErr
+	}
 	return runWithLockedOSThread(func() error {
 		err := libssl.SSLShutdown(s.ssl)
 		if err != nil {
@@ -144,10 +213,24 @@ func (s *SSL) Close() error {
 	})
 }
 
-// Free will free the C memory allocated by [SSL]. [SSL] should not be used after calling free.
-func (s *SSL) Free() error {
-	s.freeOnce.Do(func() {
-		s.freeErr = libssl.SSLFree(s.ssl)
+// GetShutdownState
+func (s *SSL) GetShutdownState() int {
+	if s.closed {
+		return -1
+	}
+	var state int
+	runWithLockedOSThread(func() error {
+		state = libssl.SSLGetShutdown(s.ssl)
+		return nil
 	})
-	return s.freeErr
+	return state
+}
+
+// Close will Close the C memory allocated by [SSL]. [SSL] should not be used after calling Close.
+func (s *SSL) Close() error {
+	s.closeOnce.Do(func() {
+		s.closeErr = libssl.SSLFree(s.ssl)
+		s.closed = true
+	})
+	return s.closeErr
 }

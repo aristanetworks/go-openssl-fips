@@ -88,8 +88,11 @@ type Config struct {
 	// RenegotiationDisabled disables all renegotiation
 	RenegotiationDisabled bool
 
-	// CompressionDisabled disables TLS compression
-	CompressionDisabled bool
+	// TLSCompressionDisabled disables TLS compression
+	TLSCompressionDisabled bool
+
+	// TransportCompressionDisabled disables Gzip compression
+	TransportCompressionDisabled bool
 
 	// Timeout is connection timeout
 	Timeout time.Duration
@@ -105,6 +108,6 @@ func DefaultConfig() *Config {
 		MinVersion:        libssl.TLS1_2_VERSION,
 		VerifyMode:        VerifyPeer,
 		CertificateChecks: X509CheckTimeValidity,
-		Timeout:           30 * time.Second,
+		Timeout:           10 * time.Second,
 	}
 }

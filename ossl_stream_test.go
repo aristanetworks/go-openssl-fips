@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
 )
 
 // Response represents each JSON object in the stream
@@ -35,11 +36,11 @@ func init() {
 }
 
 func TestStreamJSON(t *testing.T) {
-	client, err := ossl.NewClient()
+	defer testutils.LeakCheckLSAN(t)
+	client, err := ossl.NewClient(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
 
 	tests := []struct {
 		name          string
@@ -116,7 +117,7 @@ func TestStreamJSON(t *testing.T) {
 	}
 }
 
-func streamWithProgress(t *testing.T, client *ossl.Client, url string, progressChan chan<- Progress, messagesChan chan<- Response) error {
+func streamWithProgress(t *testing.T, client *http.Client, url string, progressChan chan<- Progress, messagesChan chan<- Response) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)

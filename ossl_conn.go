@@ -3,10 +3,10 @@ package ossl
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,7 +17,8 @@ import (
 // Conn is used for writing to and reading from a libssl [SSL] connection.
 type Conn struct {
 	// ssl needs to be cleaned up on connection close
-	ssl *SSL
+	ssl          *SSL
+	sslCtxCloser io.Closer
 	// closeNotifySent is true if the Conn attempted to send an
 	// alertCloseNotify record.
 	closeNotifySent bool
@@ -115,19 +116,19 @@ func (c *Conn) opWithDeadline(b []byte, timer *atomic.Pointer[deadlineTimer],
 
 // NewConn wraps a new [SSL] connection to the host with deadlines, tracing, and concurrency
 // safety.
-func NewConn(ssl *SSL, address string, config *Config) (*Conn, error) {
+func NewConn(ssl *SSL, ctxCloser io.Closer, config *Config) (*Conn, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
-	localAddr, remoteAddr, err := ssl.GetAddrInfo()
+	c := &Conn{
+		ssl:          ssl,
+		sslCtxCloser: ctxCloser,
+		enableTrace:  config.ConnTraceEnabled,
+	}
+	var err error
+	c.local, c.remote, err = ssl.GetAddrInfo()
 	if err != nil {
 		return nil, err
-	}
-	c := &Conn{
-		ssl:         ssl,
-		remote:      remoteAddr,
-		local:       localAddr,
-		enableTrace: config.ConnTraceEnabled,
 	}
 	if c.enableTrace {
 		c.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
@@ -178,6 +179,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 	defer c.out.Unlock()
 
 	if c.closeNotifySent {
+		// we're done writing
 		return 0, ErrShutdown
 	}
 
@@ -188,8 +190,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 	return n, nil
 }
 
-// Close will attempt to cleanly shutdown the [SSL] connection. It will free [SSL] resources in the
-// case of a shutdown failure.
+// Close will attempt to cleanly shutdown the [SSL] connection and free [SSL] resources.
 func (c *Conn) Close() error {
 	c.trace("Close begin")
 	defer c.trace("Close end")
@@ -206,41 +207,52 @@ func (c *Conn) Close() error {
 	}
 	c.trace("Close grabbed lock")
 	if x != 0 {
-		c.trace("CloseFD")
 		// io.Writer and io.Closer should not be used concurrently.
 		// If Close is called while a Write is currently in-flight,
 		// interpret that as a sign that this Close is really just
 		// being used to break the Write and/or clean up resources and
 		// avoid sending the alertCloseNotify, which may block
 		// waiting on handshakeMutex or the c.out mutex.
-		// defer runtime.SetFinalizer(c.ssl, func(s *SSL) { s.Free() })
+		c.trace("CloseFD")
+		defer func() {
+			// Wait for Read to end before we free-up the SSL objects
+			c.in.Lock()
+			defer c.in.Unlock()
+			c.ssl.Close()
+			c.sslCtxCloser.Close()
+		}()
 		return c.ssl.CloseFD()
 	}
 	return c.closeNotify()
 }
 
+// closeNotify closes the Write side of the connection by sending an close notify shutdown alert
+// message to the peer.
 func (c *Conn) closeNotify() error {
 	c.out.Lock()
 	defer c.out.Unlock()
 	c.trace("Close-notify begin")
 	defer c.trace("Close-notify end")
-	var err error
 	if !c.closeNotifySent {
 		// Set a Write Deadline to prevent possibly blocking forever.
 		c.SetWriteDeadline(time.Now().Add(time.Second * 5))
-		_, err = c.opWithDeadline(nil, &c.writeTimer, func(b []byte) (int, error) {
-			return 0, c.ssl.Close()
+		_, c.closeErr = c.opWithDeadline(nil, &c.writeTimer, func(b []byte) (int, error) {
+			c.trace("Close-notify shutdown")
+			return 0, c.ssl.Shutdown()
 		})
-		// Free the connection resources explictly in the case shutdown fails
-		if err != nil {
-			runtime.SetFinalizer(c.ssl, func(s *SSL) { s.Free() })
-		}
+		defer func() {
+			// Wait for Read to end before we free-up the SSL objects
+			c.in.Lock()
+			defer c.in.Unlock()
+			c.ssl.Close()
+			c.sslCtxCloser.Close()
+		}()
 		c.closeNotifySent = true
 		c.closed.Store(true)
 		// Any subsequent writes will fail.
 		c.SetWriteDeadline(time.Now())
 	}
-	return err
+	return c.closeErr
 }
 
 // LocalAddr returns the local network address, if known.

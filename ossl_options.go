@@ -2,7 +2,7 @@ package ossl
 
 import "path/filepath"
 
-// ConfigOption is used to configure the [Client] and its [SSL] connections.
+// ConfigOption is used to configure the [sslClient] and its [SSL] connections.
 type ConfigOption func(*Config)
 
 // WithCaFile sets the CA file path.
@@ -69,10 +69,17 @@ func WithRenegotiationDisabled() ConfigOption {
 	}
 }
 
-// WithCompressionDisabled disables TLS compression.
-func WithCompressionDisabled() ConfigOption {
+// WithTLSCompressionDisabled disables TLS compression.
+func WithTLSCompressionDisabled() ConfigOption {
 	return func(c *Config) {
-		c.CompressionDisabled = true
+		c.TLSCompressionDisabled = true
+	}
+}
+
+// WithTransportCompressionDisabled disables gzip compression in [Transport].
+func WithTransportCompressionDisabled() ConfigOption {
+	return func(c *Config) {
+		c.TransportCompressionDisabled = true
 	}
 }
 

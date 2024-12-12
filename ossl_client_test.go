@@ -25,14 +25,14 @@ func init() {
 
 // TestSSLClientGet
 func TestSSLClientGet(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
-	client, err := ossl.NewClient(ossl.WithCaFile(ts.CaFile))
+	client, err := ossl.NewClient(nil, ossl.WithCaFile(ts.CaFile), ossl.WithConnTraceEnabled())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
 
 	trace := &httptrace.ClientTrace{
 		TLSHandshakeStart: func() {
@@ -99,14 +99,14 @@ func TestSSLClientGet(t *testing.T) {
 
 // TestSSLClientPost
 func TestSSLClientPost(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
-	client, err := ossl.NewClient(ossl.WithCaFile(ts.CaFile))
+	client, err := ossl.NewClient(nil, ossl.WithCaFile(ts.CaFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -153,11 +153,10 @@ func TestSSLClientPostTrace(t *testing.T) {
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
-	client, err := ossl.NewClient(ossl.WithCaFile(ts.CaFile))
+	client, err := ossl.NewClient(nil, ossl.WithCaFile(ts.CaFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -201,11 +200,11 @@ func TestSSLClientPostTrace(t *testing.T) {
 
 func TestRoundTripSSL(t *testing.T) {
 	t.Skip("local testing only")
-	client, err := ossl.NewClient()
+	defer testutils.LeakCheckLSAN(t)
+	client, err := ossl.NewClient(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
 
 	// Add HTTP trace for debugging
 	trace := &httptrace.ClientTrace{

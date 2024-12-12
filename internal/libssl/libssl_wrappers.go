@@ -289,8 +289,10 @@ func SSLShutdown(ssl *SSL) error {
 		return nil
 	case 0:
 		// Bidirectional shutdown must be performed. SSL_shutdown will need to be called again.
-		// TODO: I don't like the idea of doing a recursive call here
-		return SSLShutdown(ssl)
+		if r := int(C.go_openssl_SSL_shutdown(ssl.inner)); r < 0 {
+			return newSSLError("libssl: SSL_shutdown", SSLGetError(ssl, r))
+		}
+		return nil
 	default:
 		return newSSLError("libssl: SSL_shutdown", SSLGetError(ssl, r))
 	}
@@ -393,12 +395,13 @@ func SSLRead(ssl *SSL, size int64) ([]byte, error) {
 	if ssl == nil {
 		return nil, newOpenSSLError("libssl: SSL_read: SSL_CTX is nil")
 	}
-	resp := make([]byte, size)
-	r := C.go_openssl_SSL_read(ssl.inner, unsafe.Pointer(addr(resp)), C.int(size))
+	cBuf := C.malloc(C.size_t(size))
+	defer C.free(cBuf)
+	r := C.go_openssl_SSL_read(ssl.inner, cBuf, C.int(size))
 	if r <= 0 {
 		return nil, newOpenSSLError("libssl: SSL_read")
 	}
-	return resp[:r], nil
+	return C.GoBytes(cBuf, r), nil
 }
 
 func SSLSetMode(ssl *SSL, mode int64) error {
@@ -641,6 +644,21 @@ func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) error {
 		C.int(family),
 		C.int(mode)); r != 0 {
 		return newSSLError("libssl: dial_host", SSLGetError(ssl, int(r)))
+	}
+	return nil
+}
+
+func SSLConfigure(ssl *SSL, hostname, port string, sockfd int) error {
+	cHost := C.CString(hostname)
+	cPort := C.CString(port)
+	defer C.free(unsafe.Pointer(cHost))
+	defer C.free(unsafe.Pointer(cPort))
+	if r := C.go_openssl_ssl_configure(
+		ssl.inner,
+		cHost,
+		cPort,
+		C.int(sockfd)); r != 0 {
+		return newSSLError("libssl: ssl_configure", SSLGetError(ssl, int(r)))
 	}
 	return nil
 }

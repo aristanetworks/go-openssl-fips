@@ -5,6 +5,10 @@ TAG=$(git rev-parse HEAD)
 TS=$(date +%s)
 
 case "$1" in
+-a|--asan)
+    go test -asan -failfast -count=1 ./...
+    break
+    ;;
 -b|--binary)
     go test -tags netgo -race -c -o test-client ./ssl_client_test.go
     go test -tags netgo -race -c -o test-conn ./ssl_conn_test.go

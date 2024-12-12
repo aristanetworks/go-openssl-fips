@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
 )
 
 func TestMain(m *testing.M) {
@@ -35,6 +36,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestCheckVersion(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	v := libssl.GetVersion()
 	exists, fips := libssl.CheckVersion(v)
 	if !exists {
@@ -46,6 +48,7 @@ func TestCheckVersion(t *testing.T) {
 }
 
 func TestSSL_connect(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	v := libssl.GetVersion()
 	err := libssl.Init(v)
 	if err != nil {
@@ -103,10 +106,10 @@ func TestSSL_connect(t *testing.T) {
 	}
 
 	t.Logf("Response was %v bytes.\n", len(resp))
-	libssl.CheckLeaks()
 }
 
 func TestBlockingClient(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	v := libssl.GetVersion()
 	err := libssl.Init(v)
 	if err != nil {

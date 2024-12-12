@@ -21,18 +21,19 @@ func init() {
 }
 
 func TestTransportConcurrency(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
 	t.Run("SSL Transport", func(t *testing.T) {
 		client, err := ossl.NewClient(
+			nil,
 			ossl.WithCaFile(ts.CaFile),
 			ossl.WithConnTraceEnabled())
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer client.Close()
-		createRequests(t, ts, &client.Client)
+		createRequests(t, ts, client)
 	})
 
 	t.Run("Default Transport", func(t *testing.T) {
@@ -49,7 +50,7 @@ func TestTransportConcurrency(t *testing.T) {
 }
 
 func createRequests(t *testing.T, ts *testutils.TestServer, client *http.Client) {
-	const concurrentRequests = 5
+	const concurrentRequests = 20
 	var wg sync.WaitGroup
 	wg.Add(concurrentRequests)
 

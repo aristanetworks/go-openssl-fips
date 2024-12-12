@@ -214,6 +214,50 @@ go_openssl_version_patch(void* handle)
     return (num >> 12) & 0xff;
 }
 
+// go_openssl_ssl_configure configures the ssl connection with sockfd.
+int
+go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, const char *port, int sockfd)
+{
+    int r = 0;
+
+    go_openssl_ERR_clear_error();
+    go_openssl_SSL_set_connect_state(ssl);
+    // TODO: since we know the hostname during ssl creation, we should make this a configuration
+    // option
+    // SSL_set_tlsext_hostname sets the SNI hostname
+    r = go_openssl_SSL_ctrl(ssl, GO_SSL_CTRL_SET_TLSEXT_HOSTNAME, GO_TLSEXT_NAMETYPE_host_name, (void *)hostname);
+    if (r != 1) {
+        return r;
+    }
+
+    // SSL_set1_host sets the hostname for certificate verification
+    r = go_openssl_SSL_set1_host(ssl, hostname);
+    if (r != 1) {
+        return r;
+    }
+
+    r = go_openssl_SSL_set1_host(ssl, hostname);
+    if (r != 1) {
+        return r;
+    }
+
+    r = go_openssl_SSL_set_fd(ssl, sockfd);
+    if (r != 1) {
+        return r;
+    }
+
+    r = go_openssl_SSL_connect(ssl);
+    if (r != 1) {
+        return r;
+    }
+
+    r = go_openssl_SSL_get_verify_result(ssl);
+    if (r != GO_X509_V_OK) {
+        return r;
+    }
+    return 0;
+}
+
 // go_openssl_dial_host initializes the SSL connection to the host.
 int
 go_openssl_dial_host(GO_SSL_PTR ssl, const char *hostname, const char *port, int family, int mode)

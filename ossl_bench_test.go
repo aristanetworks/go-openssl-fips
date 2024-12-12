@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl"
+	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
 )
 
 const URL = "https://httpbingo.org/"
@@ -26,11 +27,11 @@ func init() {
 }
 
 func BenchmarkClientSSL(b *testing.B) {
-	osslClient, err := ossl.NewClient()
+	defer testutils.LeakCheckLSAN(b)
+	osslClient, err := ossl.NewClient(nil)
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer osslClient.Close()
 	b.ResetTimer()
 
 	b.Run("Custom OSSL Client GET", func(b *testing.B) {

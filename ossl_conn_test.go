@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ func init() {
 }
 
 func TestSSLConn(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
@@ -35,15 +35,7 @@ func TestSSLConn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := ossl.DefaultConfig()
-	c.CaFile = ts.CaFile
-	c.CaPath = filepath.Dir(ts.CaFile)
-	ctx, err := ossl.NewSSLContext(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctx.Free()
-	d := ossl.DefaultDialer(ctx, c)
+	d := ossl.NewDialer(ossl.WithCaFile(ts.CaFile), ossl.WithConnTraceEnabled())
 	conn, err := d.Dial(context.Background(), net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
@@ -62,13 +54,14 @@ func TestSSLConn(t *testing.T) {
 		t.Fatalf("Failed to read response: %v", err)
 	}
 
-	if !strings.Contains(response, "HTTP/1.1") {
+	if !strings.Contains(string(response), "HTTP/1.1") {
 		t.Errorf("Unexpected response: %s", response)
 	}
-	fmt.Printf("Response: %s\n", response)
+	fmt.Printf("Response: %s\n", string(response))
 }
 
 func TestSSLConnReadDeadline(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
@@ -80,35 +73,28 @@ func TestSSLConnReadDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := ossl.DefaultConfig()
-	c.ConnTraceEnabled = true
-	c.CaFile = ts.CaFile
-	c.CaPath = filepath.Dir(ts.CaFile)
-	ctx, err := ossl.NewSSLContext(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctx.Free()
-	d := ossl.DefaultDialer(ctx, c)
+	d := ossl.NewDialer(ossl.WithCaFile(ts.CaFile), ossl.WithConnTraceEnabled())
 	conn, err := d.Dial(context.Background(), net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(1 * time.Second))
+	conn.SetDeadline(time.Now().Add(2 * time.Second))
 	request := fmt.Sprintf("GET /get HTTP/1.1\r\nHost: %s\r\n\r\n", host)
 	_, err = conn.Write([]byte(request))
 	if err != nil {
 		t.Fatalf("Failed to write request: %v", err)
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	reader := bufio.NewReader(conn)
 	_, err = reader.ReadString('\n')
 	if err == nil {
-		t.Fatal("Dead should have been reached")
+		t.Fatal("Deadline should have been reached")
 	} else if errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Logf("Deadline reached as expected with err %v", err)
+	} else {
+		t.Fatalf("Error is not deadline error: %v", err)
 	}
 }

@@ -29,3 +29,4 @@ int go_openssl_thread_setup(void);
 void go_openssl_load_functions(void* handle, unsigned int major, unsigned int minor, unsigned int patch);
 GO_BIO_PTR go_openssl_create_bio(const char *hostname, const char *port, int family, int mode);
 int go_openssl_dial_host(GO_SSL_PTR ssl, const char *hostname, const char *port, int family, int mode);
+int go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, const char *port, int sockfd);

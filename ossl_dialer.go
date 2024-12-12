@@ -2,6 +2,7 @@ package ossl
 
 import (
 	"context"
+	"io"
 	"net"
 	"syscall"
 	"time"
@@ -32,36 +33,58 @@ type Dialer struct {
 	// Config is the dialing Config for [Conn].
 	Config *Config
 
-	// Ctx is the [SSLContext] used for creating [SSL] connections.
+	// Ctx is the [SSLContext] that will be used for creating [SSL] connections. If this is nil, then
+	// [Dialer.Dial] will create a new [SSLContext] every invocation.
 	Ctx *SSLContext
 }
 
-// DefaultDialer returns the [SSL] dialer with default [Config] options.
-func DefaultDialer(ctx *SSLContext, c *Config) *Dialer {
-	if c == nil {
-		c = DefaultConfig()
+// NewDialer returns the [SSL] dialer configured with [Config].
+func NewDialer(opts ...ConfigOption) *Dialer {
+	c := DefaultConfig()
+	for _, o := range opts {
+		o(c)
 	}
 	return &Dialer{
-		Ctx:     ctx,
 		Config:  c,
-		Timeout: 30 * time.Second,
+		Timeout: c.Timeout,
 	}
+}
+
+// emptyCloser is a noop in the case where the caller provides the SSLContext
+type emptyCloser struct {
+}
+
+func (e emptyCloser) Close() error {
+	return nil
 }
 
 // Dial specifies a dial function for creating [SSL] connections.
 // TODO: should use the context Deadline.
 func (d *Dialer) Dial(ctx context.Context, addr string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(addr)
+	sslCtx, sslCtxCloser, err := d.getSSLCtx()
 	if err != nil {
 		return nil, err
 	}
-	ssl, err := NewSSL(d.Ctx, d.Config)
+	ssl, err := NewSSL(sslCtx)
 	if err != nil {
 		return nil, err
 	}
-	// Create a non-blocking connection
-	if err := ssl.DialHost(host, port, syscall.AF_INET, 0); err != nil {
+	if err := ssl.DialHost(addr, syscall.AF_INET, 0); err != nil {
 		return nil, err
 	}
-	return NewConn(ssl, addr, d.Config)
+	return NewConn(ssl, sslCtxCloser, d.Config)
+}
+
+func (d *Dialer) getSSLCtx() (*SSLContext, io.Closer, error) {
+	// if the caller is managing the SSLContext, create a new one that [Conn] will close
+	if d.Ctx == nil {
+		sslCtx, err := NewSSLContext(d.Config)
+		if err != nil {
+			return nil, nil, err
+		}
+		return sslCtx, sslCtx, nil
+	}
+	// otherwise, we use the supplied sslCtx for creating [SSL] connections and provide an empty
+	// closer to [Conn]
+	return d.Ctx, emptyCloser{}, nil
 }

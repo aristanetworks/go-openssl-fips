@@ -9,9 +9,9 @@ import (
 
 // SSLContext stores configuration options used to create [SSL] connections.
 type SSLContext struct {
-	ctx      *libssl.SSLCtx
-	freeOnce sync.Once
-	freeErr  error
+	ctx       *libssl.SSLCtx
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewSSLContext creates a new [SSLContext] using the supplied [Config].
@@ -38,13 +38,13 @@ func NewSSLContext(c *Config) (*SSLContext, error) {
 	return sslCtx, nil
 }
 
-// Free will free the C memory allocated by [SSLContext]. [SSLContext] should not be used after
+// Close will free the C memory allocated by [SSLContext]. [SSLContext] should not be used after
 // calling free.
-func (c *SSLContext) Free() error {
-	c.freeOnce.Do(func() {
-		c.freeErr = libssl.SSLCtxFree(c.ctx)
+func (c *SSLContext) Close() error {
+	c.closeOnce.Do(func() {
+		c.closeErr = libssl.SSLCtxFree(c.ctx)
 	})
-	return c.freeErr
+	return c.closeErr
 }
 
 // newSslCtx creates a new [libssl.SSLCtx] object from the TLS [Method].
@@ -80,7 +80,7 @@ func (s *SSLContext) apply(c *Config) error {
 	if c.RenegotiationDisabled {
 		options |= libssl.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION
 	}
-	if c.CompressionDisabled {
+	if c.TLSCompressionDisabled {
 		options |= libssl.SSL_OP_NO_COMPRESSION
 	}
 
