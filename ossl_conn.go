@@ -42,8 +42,8 @@ type Conn struct {
 	logger *log.Logger
 
 	// net
-	local  net.Addr
-	remote net.Addr
+	localAddr  net.Addr
+	remoteAddr net.Addr
 
 	// enableTrace
 	enableTrace bool
@@ -57,8 +57,8 @@ func (c *Conn) trace(msg string) {
 		"%s %-20s %-20s %-20s %-5s",
 		"[SSLConn]",
 		msg,
-		fmt.Sprintf("local=%+v", c.local),
-		fmt.Sprintf("remote=%+v", c.remote),
+		fmt.Sprintf("local=%+v", c.localAddr),
+		fmt.Sprintf("remote=%+v", c.remoteAddr),
 		fmt.Sprintf("conn=%+v", c.ssl.sockfd),
 	)
 }
@@ -123,12 +123,9 @@ func NewConn(ssl *SSL, ctxCloser io.Closer, config *Config) (*Conn, error) {
 	c := &Conn{
 		ssl:          ssl,
 		sslCtxCloser: ctxCloser,
+		localAddr:    ssl.LocalAddr(),
+		remoteAddr:   ssl.RemoteAddr(),
 		enableTrace:  config.ConnTraceEnabled,
-	}
-	var err error
-	c.local, c.remote, err = ssl.GetAddrInfo()
-	if err != nil {
-		return nil, err
 	}
 	if c.enableTrace {
 		c.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
@@ -153,7 +150,7 @@ func (c *Conn) Read(b []byte) (int, error) {
 		if ok && sslErr.Code == libssl.SSL_ERROR_ZERO_RETURN {
 			c.trace("Read ZERO return")
 		}
-		return 0, newConnError("read", c.remote, err)
+		return 0, newConnError("read", c.remoteAddr, err)
 	}
 	return n, nil
 }
@@ -185,7 +182,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 
 	n, err := c.opWithDeadline(b, &c.writeTimer, c.ssl.Write)
 	if err != nil {
-		return n, newConnError("write", c.remote, err)
+		return n, newConnError("write", c.remoteAddr, err)
 	}
 	return n, nil
 }
@@ -257,12 +254,12 @@ func (c *Conn) closeNotify() error {
 
 // LocalAddr returns the local network address, if known.
 func (c *Conn) LocalAddr() net.Addr {
-	return c.local
+	return c.localAddr
 }
 
 // RemoteAddr returns the remote network address, if known.
 func (c *Conn) RemoteAddr() net.Addr {
-	return c.remote
+	return c.remoteAddr
 }
 
 // SetDeadline sets the read and write deadlines of the [SSL] connection.

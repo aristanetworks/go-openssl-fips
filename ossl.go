@@ -1,23 +1,24 @@
 package ossl
 
 import (
-	"fmt"
+	"context"
 	"net"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 // SSL represents a single SSL connection. It inherits configuration options from [SSLContext].
 type SSL struct {
-	ssl       *libssl.SSL
-	closeOnce sync.Once
-	closeErr  error
-	closed    bool
-	sockfd    int
-	rawConn   net.Conn
+	ssl        *libssl.SSL
+	closeOnce  sync.Once
+	closeErr   error
+	closed     bool
+	sockfd     int
+	rawConn    net.Conn
+	localAddr  net.Addr
+	remoteAddr net.Addr
 }
 
 // NewSSL creates an [SSL] object using [SSLContext]. [SSL] is used for creating
@@ -45,9 +46,22 @@ func (s *SSL) SetFd(fd int) error {
 	return libssl.SetSSLFd(s.ssl, fd)
 }
 
-// DialHost will create a new BIO fd and connect to the host. It can be either blocking (mode=0) or
+// DialBIO will create a new BIO fd and connect to the host. It can be either blocking (mode=0) or
 // non-blocking (mode=1).
-func (s *SSL) DialHost(addr string, family, ioMode int) error {
+func (s *SSL) DialBIO(ctx context.Context, addr string, family, mode int) error {
+	if s.closed {
+		return s.closeErr
+	}
+	if err := s.dialBIO(ctx, addr, family, mode); err != nil {
+		return err
+	}
+	if err := s.setAddrInfo(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SSL) dialBIO(ctx context.Context, addr string, family, mode int) error {
 	if s.closed {
 		return s.closeErr
 	}
@@ -55,13 +69,24 @@ func (s *SSL) DialHost(addr string, family, ioMode int) error {
 	if err != nil {
 		return err
 	}
-	return runWithLockedOSThread(func() error {
-		return libssl.SSLDialHost(s.ssl, host, port, family, ioMode)
-	})
+	errCh := make(chan error)
+	go func() {
+		errCh <- runWithLockedOSThread(func() error {
+			return libssl.SSLDialHost(s.ssl, host, port, family, mode)
+		})
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errCh:
+		return err
+	}
 }
 
-func (s *SSL) Dial(addr string) error {
-	conn, err := net.Dial("tcp", addr)
+// dialTCP will dial a TCP connection using golang's [net.Dial] and pass the fd to SSL.
+func (s *SSL) dialTCP(ctx context.Context, addr string) error {
+	d := net.Dialer{}
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -80,54 +105,22 @@ func (s *SSL) Dial(addr string) error {
 	return nil
 }
 
-// GetAddrInfo will return the local and remote addresses of the [SSL] connection.
-func (s *SSL) GetAddrInfo() (local net.Addr, remote net.Addr, err error) {
+// setAddrInfo will return the local and remote addresses of the [SSL] connection.
+func (s *SSL) setAddrInfo() (err error) {
 	if s.closed {
-		return nil, nil, s.closeErr
+		return s.closeErr
 	}
 	s.sockfd, err = libssl.SSLGetFd(s.ssl)
 	sockname, err := syscall.Getsockname(s.sockfd)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	peername, err := syscall.Getpeername(s.sockfd)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	return sockaddrToNetAddr(sockname), sockaddrToNetAddr(peername), nil
-}
-
-func sockaddrToNetAddr(sa syscall.Sockaddr) net.Addr {
-	switch sa := sa.(type) {
-	case *syscall.SockaddrInet4:
-		return &net.TCPAddr{
-			IP:   sa.Addr[:],
-			Port: int(sa.Port),
-		}
-	case *syscall.SockaddrInet6:
-		return &net.TCPAddr{
-			IP:   sa.Addr[:],
-			Port: int(sa.Port),
-			Zone: zoneToString(int(sa.ZoneId)),
-		}
-	case *syscall.SockaddrUnix:
-		return &net.UnixAddr{
-			Name: sa.Name,
-			Net:  "unix",
-		}
-	default:
-		return nil
-	}
-}
-
-func zoneToString(zone int) string {
-	if zone == 0 {
-		return ""
-	}
-	if ifi, err := net.InterfaceByIndex(zone); err == nil {
-		return ifi.Name
-	}
-	return fmt.Sprintf("%d", zone)
+	s.localAddr, s.remoteAddr = sockaddrToNetAddr(sockname), sockaddrToNetAddr(peername)
+	return nil
 }
 
 // CloseFD will close the [SSL] file descriptor using syscall.Close.
@@ -161,23 +154,11 @@ func (s *SSL) Read(b []byte) (int, error) {
 }
 
 func (s *SSL) LocalAddr() net.Addr {
-	return s.rawConn.LocalAddr()
+	return s.localAddr
 }
 
 func (s *SSL) RemoteAddr() net.Addr {
-	return s.rawConn.RemoteAddr()
-}
-
-func (s *SSL) SetDeadline(t time.Time) error {
-	return s.rawConn.SetDeadline(t)
-}
-
-func (s *SSL) SetReadDeadline(t time.Time) error {
-	return s.rawConn.SetReadDeadline(t)
-}
-
-func (s *SSL) SetWriteDeadline(t time.Time) error {
-	return s.rawConn.SetWriteDeadline(t)
+	return s.remoteAddr
 }
 
 // Write will write bytes from the buffer to the [SSL] connection.

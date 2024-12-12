@@ -38,13 +38,15 @@ type Dialer struct {
 	Ctx *SSLContext
 }
 
-// NewDialer returns the [SSL] dialer configured with [Config].
-func NewDialer(opts ...ConfigOption) *Dialer {
+// NewDialer returns the [SSL] dialer configured with [Config]. If [SSLContext] is nil, then
+// [Dialer.Dial] will create one and free it on [Conn.Close].
+func NewDialer(ctx *SSLContext, opts ...ConfigOption) *Dialer {
 	c := DefaultConfig()
 	for _, o := range opts {
 		o(c)
 	}
 	return &Dialer{
+		Ctx:     ctx,
 		Config:  c,
 		Timeout: c.Timeout,
 	}
@@ -59,7 +61,6 @@ func (e emptyCloser) Close() error {
 }
 
 // Dial specifies a dial function for creating [SSL] connections.
-// TODO: should use the context Deadline.
 func (d *Dialer) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	sslCtx, sslCtxCloser, err := d.getSSLCtx()
 	if err != nil {
@@ -69,14 +70,16 @@ func (d *Dialer) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ssl.DialHost(addr, syscall.AF_INET, 0); err != nil {
+	if err := ssl.DialBIO(ctx, addr, syscall.AF_INET, 0); err != nil {
+		ssl.Close()
+		sslCtxCloser.Close()
 		return nil, err
 	}
 	return NewConn(ssl, sslCtxCloser, d.Config)
 }
 
 func (d *Dialer) getSSLCtx() (*SSLContext, io.Closer, error) {
-	// if the caller is managing the SSLContext, create a new one that [Conn] will close
+	// if no SSLContext is provided, create a new one that [Conn] will close
 	if d.Ctx == nil {
 		sslCtx, err := NewSSLContext(d.Config)
 		if err != nil {
@@ -85,6 +88,6 @@ func (d *Dialer) getSSLCtx() (*SSLContext, io.Closer, error) {
 		return sslCtx, sslCtx, nil
 	}
 	// otherwise, we use the supplied sslCtx for creating [SSL] connections and provide an empty
-	// closer to [Conn]
+	// [io.Closer] to [Conn]
 	return d.Ctx, emptyCloser{}, nil
 }
