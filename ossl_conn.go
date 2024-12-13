@@ -57,9 +57,9 @@ func (c *Conn) trace(msg string) {
 		"%s %-20s %-20s %-20s %-5s",
 		"[SSLConn]",
 		msg,
-		fmt.Sprintf("local=%+v", c.localAddr),
-		fmt.Sprintf("remote=%+v", c.remoteAddr),
-		fmt.Sprintf("conn=%+v", c.ssl.sockfd),
+		fmt.Sprintf("local=%+v", c.ssl.LocalAddr()),
+		fmt.Sprintf("remote=%+v", c.ssl.LocalAddr()),
+		fmt.Sprintf("conn=%+v", c.ssl.FD()),
 	)
 }
 

@@ -626,12 +626,12 @@ func SSLSessionFree(session *SSLSession) error {
 	return nil
 }
 
-func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) error {
+func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) (int, error) {
 	if ssl == nil {
-		return newOpenSSLError("libssl: dial_host: SSL is nil")
+		return -1, newOpenSSLError("libssl: dial_host: SSL is nil")
 	}
 	if !versionAtOrAbove(1, 1, 0) {
-		return newOpenSSLError("libssl: dial_host: not implemented for OpenSSL < 1.1.1")
+		return -1, newOpenSSLError("libssl: dial_host: not implemented for OpenSSL < 1.1.1")
 	}
 	cHost := C.CString(hostname)
 	cPort := C.CString(port)
@@ -643,20 +643,17 @@ func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) error {
 		cPort,
 		C.int(family),
 		C.int(mode)); r != 0 {
-		return newSSLError("libssl: dial_host", SSLGetError(ssl, int(r)))
+		return -1, newSSLError("libssl: dial_host", SSLGetError(ssl, int(r)))
 	}
-	return nil
+	return int(C.go_openssl_SSL_get_fd(ssl.inner)), nil
 }
 
-func SSLConfigure(ssl *SSL, hostname, port string, sockfd int) error {
+func SSLConfigureSock(ssl *SSL, hostname string, sockfd int) error {
 	cHost := C.CString(hostname)
-	cPort := C.CString(port)
 	defer C.free(unsafe.Pointer(cHost))
-	defer C.free(unsafe.Pointer(cPort))
-	if r := C.go_openssl_ssl_configure(
+	if r := C.go_openssl_ssl_configure_sock(
 		ssl.inner,
 		cHost,
-		cPort,
 		C.int(sockfd)); r != 0 {
 		return newSSLError("libssl: ssl_configure", SSLGetError(ssl, int(r)))
 	}
@@ -672,4 +669,45 @@ func SSLGetFd(ssl *SSL) (int, error) {
 		return int(r), newSSLError("libssl: SSL_get_fd", SSLGetError(ssl, int(r)))
 	}
 	return int(r), nil
+}
+
+type BIO struct {
+	inner C.GO_BIO_PTR
+}
+
+func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
+	cHost := C.CString(hostname)
+	cPort := C.CString(port)
+	defer C.free(unsafe.Pointer(cHost))
+	defer C.free(unsafe.Pointer(cPort))
+	bio := C.go_openssl_create_bio(cHost, cPort, C.int(family), C.int(mode))
+	if bio == nil {
+		return nil, -1, newOpenSSLError("libssl: create_bio")
+	}
+	var sockfd C.int
+	if r := C.go_openssl_BIO_ctrl(
+		bio,
+		C.GO_BIO_C_GET_FD,
+		C.long(0),
+		unsafe.Pointer(&sockfd)); r == -1 {
+		return nil, -1, newOpenSSLError("libssl: create_bio: BIO not initialized")
+	}
+	return &BIO{inner: bio}, int(sockfd), nil
+}
+
+func SSLConfigureBIO(ssl *SSL, bio *BIO, hostname string) error {
+	cHost := C.CString(hostname)
+	defer C.free(unsafe.Pointer(cHost))
+	if r := C.go_openssl_ssl_configure_bio(ssl.inner, bio.inner, cHost); r != 0 {
+		return newSSLError("libssl: ssl_configure", SSLGetError(ssl, int(r)))
+	}
+	return nil
+}
+
+func BIOFree(bio *BIO) error {
+	if bio == nil {
+		return newOpenSSLError("libssl: BIO_free_all: BIO is nil")
+	}
+	C.go_openssl_BIO_free_all(bio.inner)
+	return nil
 }

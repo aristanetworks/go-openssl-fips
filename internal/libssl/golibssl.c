@@ -214,13 +214,31 @@ go_openssl_version_patch(void* handle)
     return (num >> 12) & 0xff;
 }
 
-// go_openssl_ssl_configure configures the ssl connection with sockfd.
+// go_openssl_ssl_configure_sock configures the ssl connection with sockfd.
 int
-go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, const char *port, int sockfd)
+go_openssl_ssl_configure_sock(GO_SSL_PTR ssl, const char *hostname, int sockfd)
 {
-    int r = 0;
-
     go_openssl_ERR_clear_error();
+    int r = go_openssl_SSL_set_fd(ssl, sockfd);
+    if (r != 1) {
+        return r;
+    }
+    return go_openssl_ssl_configure(ssl, hostname);
+}
+
+// go_openssl_ssl_configure_bio configures the ssl connection with BIO.
+int
+go_openssl_ssl_configure_bio(GO_SSL_PTR ssl, GO_BIO_PTR bio, const char *hostname)
+{
+    go_openssl_ERR_clear_error();
+    go_openssl_SSL_set_bio(ssl, bio, bio);
+    return go_openssl_ssl_configure(ssl, hostname);
+}
+
+int
+go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname)
+{
+    int r;
     go_openssl_SSL_set_connect_state(ssl);
     // TODO: since we know the hostname during ssl creation, we should make this a configuration
     // option
@@ -241,11 +259,6 @@ go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, const char *port,
         return r;
     }
 
-    r = go_openssl_SSL_set_fd(ssl, sockfd);
-    if (r != 1) {
-        return r;
-    }
-
     r = go_openssl_SSL_connect(ssl);
     if (r != 1) {
         return r;
@@ -258,12 +271,12 @@ go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, const char *port,
     return 0;
 }
 
+
 // go_openssl_dial_host initializes the SSL connection to the host.
 int
 go_openssl_dial_host(GO_SSL_PTR ssl, const char *hostname, const char *port, int family, int mode)
 {
-    int r = 0;
-
+    int r;
     go_openssl_ERR_clear_error();
     go_openssl_SSL_set_connect_state(ssl);
     // TODO: since we know the hostname during ssl creation, we should make this a configuration

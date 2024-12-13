@@ -22,7 +22,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		port = "443"
 	}
 	address := net.JoinHostPort(req.URL.Hostname(), port)
-	conn, err := t.Dialer.Dial(req.Context(), address)
+	conn, err := t.Dialer.DialContext(req.Context(), "tcp", address)
 	if err != nil {
 		return nil, err
 	}

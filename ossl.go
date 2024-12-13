@@ -1,29 +1,24 @@
 package ossl
 
 import (
-	"context"
 	"net"
 	"sync"
-	"syscall"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
 // SSL represents a single SSL connection. It inherits configuration options from [SSLContext].
 type SSL struct {
-	ssl        *libssl.SSL
-	closeOnce  sync.Once
-	closeErr   error
-	closed     bool
-	sockfd     int
-	rawConn    net.Conn
-	localAddr  net.Addr
-	remoteAddr net.Addr
+	ssl       *libssl.SSL
+	bio       *BIO
+	closeOnce sync.Once
+	closeErr  error
+	closed    bool
 }
 
 // NewSSL creates an [SSL] object using [SSLContext]. [SSL] is used for creating
 // a single TLS connection.
-func NewSSL(ctx *SSLContext) (*SSL, error) {
+func NewSSL(ctx *SSLContext, bio *BIO) (*SSL, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
@@ -34,7 +29,14 @@ func NewSSL(ctx *SSLContext) (*SSL, error) {
 			libssl.SSLFree(s)
 			return err
 		}
-		ssl = &SSL{ssl: s}
+		if err := libssl.SSLConfigureBIO(s, bio.bio, bio.hostname); err != nil {
+			libssl.SSLFree(s)
+			return err
+		}
+		ssl = &SSL{
+			ssl: s,
+			bio: bio,
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -42,93 +44,17 @@ func NewSSL(ctx *SSLContext) (*SSL, error) {
 	return ssl, nil
 }
 
-func (s *SSL) SetFd(fd int) error {
-	return libssl.SetSSLFd(s.ssl, fd)
+// FD returns the socket file descriptor used by [SSL].
+func (s *SSL) FD() int {
+	return s.bio.FD()
 }
 
-// DialBIO will create a new BIO fd and connect to the host. It can be either blocking (mode=0) or
-// non-blocking (mode=1).
-func (s *SSL) DialBIO(ctx context.Context, addr string, family, mode int) error {
-	if s.closed {
-		return s.closeErr
-	}
-	if err := s.dialBIO(ctx, addr, family, mode); err != nil {
-		return err
-	}
-	if err := s.setAddrInfo(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *SSL) dialBIO(ctx context.Context, addr string, family, mode int) error {
-	if s.closed {
-		return s.closeErr
-	}
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return err
-	}
-	errCh := make(chan error)
-	go func() {
-		errCh <- runWithLockedOSThread(func() error {
-			return libssl.SSLDialHost(s.ssl, host, port, family, mode)
-		})
-	}()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errCh:
-		return err
-	}
-}
-
-// dialTCP will dial a TCP connection using golang's [net.Dial] and pass the fd to SSL.
-func (s *SSL) dialTCP(ctx context.Context, addr string) error {
-	d := net.Dialer{}
-	conn, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return err
-	}
-	// Get the raw file descriptor (this is a duplicate fd)
-	file, _ := conn.(*net.TCPConn).File()
-	fd := int(file.Fd())
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return err
-	}
-	if err := libssl.SSLConfigure(s.ssl, host, port, fd); err != nil {
-		return err
-	}
-	s.rawConn = conn
-	s.sockfd = fd
-	return nil
-}
-
-// setAddrInfo will return the local and remote addresses of the [SSL] connection.
-func (s *SSL) setAddrInfo() (err error) {
-	if s.closed {
-		return s.closeErr
-	}
-	s.sockfd, err = libssl.SSLGetFd(s.ssl)
-	sockname, err := syscall.Getsockname(s.sockfd)
-	if err != nil {
-		return err
-	}
-	peername, err := syscall.Getpeername(s.sockfd)
-	if err != nil {
-		return err
-	}
-	s.localAddr, s.remoteAddr = sockaddrToNetAddr(sockname), sockaddrToNetAddr(peername)
-	return nil
-}
-
-// CloseFD will close the [SSL] file descriptor using syscall.Close.
+// CloseFD will close the socket file descriptor used by [SSL].
 func (s *SSL) CloseFD() error {
 	if s.closed {
 		return s.closeErr
 	}
-	return syscall.Close(s.sockfd)
+	return s.bio.CloseFD()
 }
 
 // Read will read bytes into the buffer from the [SSL] connection.
@@ -153,12 +79,14 @@ func (s *SSL) Read(b []byte) (int, error) {
 	return numBytes, nil
 }
 
+// LocalAddr returns the local address if known.
 func (s *SSL) LocalAddr() net.Addr {
-	return s.localAddr
+	return s.bio.LocalAddr()
 }
 
+// RemoteAddr returns the peer address if known.
 func (s *SSL) RemoteAddr() net.Addr {
-	return s.remoteAddr
+	return s.bio.RemoteAddr()
 }
 
 // Write will write bytes from the buffer to the [SSL] connection.
@@ -194,7 +122,7 @@ func (s *SSL) Shutdown() error {
 	})
 }
 
-// GetShutdownState
+// GetShutdownState returns the shutdown state of the [SSL] connection.
 func (s *SSL) GetShutdownState() int {
 	if s.closed {
 		return -1
@@ -207,7 +135,7 @@ func (s *SSL) GetShutdownState() int {
 	return state
 }
 
-// Close will Close the C memory allocated by [SSL]. [SSL] should not be used after calling Close.
+// Close frees the [libssl.SSL] C object allocated by [SSL].
 func (s *SSL) Close() error {
 	s.closeOnce.Do(func() {
 		s.closeErr = libssl.SSLFree(s.ssl)

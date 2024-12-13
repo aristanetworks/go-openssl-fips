@@ -336,6 +336,8 @@ DEFINEFUNC_1_1(void, BIO_ADDRINFO_free, (GO_BIO_ADDRINFO_PTR ai), (ai)) \
 DEFINEFUNC_1_1(GO_BIO_PTR, BIO_new, (const GO_BIO_METHOD_PTR type), (type)) \
 DEFINEFUNC_1_1(GO_BIO_METHOD_PTR, BIO_s_socket, (void), ()) \
 DEFINEFUNC(long, BIO_int_ctrl, (GO_BIO_PTR bp, int cmd, long larg, int iarg), (bp, cmd, larg, iarg)) \
+DEFINEFUNC(long, BIO_ctrl, (GO_BIO_PTR bp, int cmd, long larg, void *parg), (bp, cmd, larg, parg)) \
+DEFINEFUNC(void, BIO_free_all, (GO_BIO_PTR a), (a)) \
 DEFINEFUNC(int, SSL_pending, (GO_SSL_PTR ssl), (ssl)) \
 
 // TODO int SSL_renegotiate_pending(const SSL *s);

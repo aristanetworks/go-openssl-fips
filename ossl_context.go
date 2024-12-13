@@ -38,8 +38,7 @@ func NewSSLContext(c *Config) (*SSLContext, error) {
 	return sslCtx, nil
 }
 
-// Close will free the C memory allocated by [SSLContext]. [SSLContext] should not be used after
-// calling free.
+// Close frees the [libssl.SSLCtx] C object allocated by [SSLContext].
 func (c *SSLContext) Close() error {
 	c.closeOnce.Do(func() {
 		c.closeErr = libssl.SSLCtxFree(c.ctx)
