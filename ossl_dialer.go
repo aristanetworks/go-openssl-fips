@@ -134,7 +134,7 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		closeCtx.Close()
 		return nil, err
 	}
-	return NewConn(ssl, closeCtx, d.Config)
+	return NewConn(ssl, closeCtx, d.Config.ConnTraceEnabled)
 }
 
 func (d *Dialer) getSSLCtx() (*SSLContext, io.Closer, error) {

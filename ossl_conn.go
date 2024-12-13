@@ -14,11 +14,12 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
-// Conn is used for writing to and reading from a libssl [SSL] connection.
+// Conn is used for writing to and reading from an [SSL] connection. It wraps the connection with
+// deadlines, state-tracking, debug tracing, and concurrency and memory safety.
 type Conn struct {
 	// ssl needs to be cleaned up on connection close
-	ssl          *SSL
-	sslCtxCloser io.Closer
+	ssl *SSL
+	ctx io.Closer
 	// closeNotifySent is true if the Conn attempted to send an
 	// alertCloseNotify record.
 	closeNotifySent bool
@@ -114,18 +115,19 @@ func (c *Conn) opWithDeadline(b []byte, timer *atomic.Pointer[deadlineTimer],
 	}
 }
 
-// NewConn wraps a new [SSL] connection to the host with deadlines, tracing, and concurrency
-// safety.
-func NewConn(ssl *SSL, ctxCloser io.Closer, config *Config) (*Conn, error) {
+// NewConn wraps a new [SSL] connection to the host with deadlines, state-tracking, debug tracing,
+// and concurrency and memory safety. It will free [SSL] resources on connection closure, and
+// optionally [SSLContext] resources if a non-empty context was provided.
+func NewConn(ssl *SSL, ctx io.Closer, trace bool) (*Conn, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
 	c := &Conn{
-		ssl:          ssl,
-		sslCtxCloser: ctxCloser,
-		localAddr:    ssl.LocalAddr(),
-		remoteAddr:   ssl.RemoteAddr(),
-		enableTrace:  config.ConnTraceEnabled,
+		ssl:         ssl,
+		ctx:         ctx,
+		localAddr:   ssl.LocalAddr(),
+		remoteAddr:  ssl.RemoteAddr(),
+		enableTrace: trace,
 	}
 	if c.enableTrace {
 		c.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
@@ -187,7 +189,8 @@ func (c *Conn) Write(b []byte) (int, error) {
 	return n, nil
 }
 
-// Close will attempt to cleanly shutdown the [SSL] connection and free [SSL] resources.
+// Close will attempt to cleanly shutdown the [SSL] connection and free [SSL] and optionally
+// [SSLContext] resources if a non-empty context was provided.
 func (c *Conn) Close() error {
 	c.trace("Close begin")
 	defer c.trace("Close end")
@@ -216,7 +219,7 @@ func (c *Conn) Close() error {
 			c.in.Lock()
 			defer c.in.Unlock()
 			c.ssl.Close()
-			c.sslCtxCloser.Close()
+			c.ctx.Close()
 		}()
 		return c.ssl.CloseFD()
 	}
@@ -242,7 +245,7 @@ func (c *Conn) closeNotify() error {
 			c.in.Lock()
 			defer c.in.Unlock()
 			c.ssl.Close()
-			c.sslCtxCloser.Close()
+			c.ctx.Close()
 		}()
 		c.closeNotifySent = true
 		c.closed.Store(true)
