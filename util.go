@@ -17,7 +17,7 @@ func runWithLockedOSThread(fn func() error) error {
 	return fn()
 }
 
-// Closer is [io.Closer] that wil return the [Closer.Err].
+// Closer is [io.Closer] that will return the closer error.
 type Closer interface {
 	// Err returns the error from the Close function.
 	Err() error

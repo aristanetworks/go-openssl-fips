@@ -30,12 +30,12 @@ func NewClientFromCtx(ctx *Context) *http.Client {
 	}
 }
 
-// NewClientWithCtx returns an [http.Client] with [Transport] initialized by
+// NewClientWithCachedCtx returns an [http.Client] with [Transport] initialized by
 // a context that will be reused across [SSL] dials by the [Dialer].
 //
 // It is the caller's responsibility to close the context with [Context.Close].
-// This will free the C memory allocated by [Context].
-func NewClientWithCtx(opts ...TLSOption) (*http.Client, *Context, error) {
+// Closing the context will free the C memory allocated by it.
+func NewClientWithCachedCtx(opts ...TLSOption) (*http.Client, *Context, error) {
 	ctx, err := NewCachedCtx(opts...)
 	if err != nil {
 		return nil, nil, err

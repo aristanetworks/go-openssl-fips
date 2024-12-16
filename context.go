@@ -1,12 +1,34 @@
 package ossl
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
-// Context stores configuration options used to create [SSL] connections.
+var (
+	libsslInit bool
+)
+
+// Init should be called before any calls into libssl. If the version string is empty, it will pick
+// the highest libssl.so version automatically.
+func Init(version string) error {
+	if libsslInit {
+		return nil
+	}
+	if version == "" {
+		version = libssl.GetVersion()
+	}
+	if err := libssl.Init(version); err != nil {
+		return errors.Join(ErrLoadLibSslFailed, err)
+	}
+	libsslInit = true
+	return nil
+}
+
+// Context wraps the [libssl.SSLCtx] and stores [TLSConfig] options used to create
+// [SSL] connections.
 type Context struct {
 	ctx    *libssl.SSLCtx
 	closer Closer
@@ -147,6 +169,7 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	return nil
 }
 
+// Ctx returns the allocated [libssl.SSLCtx] C object.
 func (c *Context) Ctx() *libssl.SSLCtx {
 	return c.ctx
 }
@@ -170,7 +193,7 @@ func (c *Context) makeCloseable(cc *Context) (err error) {
 }
 
 // New returns a new Context derived from this [Context]. It either references
-// this context or creates one from [Context.TLS] configuration.
+// the [libssl.SSLCtx] or creates one from the [Context.TLS] configuration.
 func (c *Context) New() (ctx *Context, err error) {
 	ctx = &Context{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
 	if !c.cached {

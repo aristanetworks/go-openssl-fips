@@ -47,10 +47,12 @@ func NewBIO(addr string, family, mode int) (b *BIO, err error) {
 	return b, nil
 }
 
+// BIO will return the underlying [libssl.BIO].
 func (b *BIO) BIO() *libssl.BIO {
 	return b.bio
 }
 
+// Hostname will return the peer hostname.
 func (b *BIO) Hostname() string {
 	return b.hostname
 }

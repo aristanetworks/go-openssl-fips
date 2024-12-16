@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 )
 
+// Transport implements [http.RoundTripper] by dialing [SSL] connections using [Dialer].
 type Transport struct {
 	Dialer             *Dialer
 	DisableCompression bool

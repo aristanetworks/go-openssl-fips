@@ -7,7 +7,7 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
-// TLS version constants
+// TLS version constants.
 type TLSVersion int
 
 const (
@@ -17,7 +17,7 @@ const (
 	TLSv13 = libssl.TLS1_3_VERSION
 )
 
-// Method represents TLS method modes
+// Method represents TLS method modes.
 type Method int
 
 const (
@@ -47,7 +47,7 @@ const (
 	VerifyPostHandshake
 )
 
-// X509VerifyFlags represents certificate verification flags
+// X509VerifyFlags represents certificate verification flags.
 type X509VerifyFlags uint32
 
 const (
@@ -66,7 +66,7 @@ const (
 )
 
 type TLSConfig struct {
-	// LibsslVersion is the libssl version to dynamically load
+	// LibsslVersion is the libssl version to dynamically load.
 	LibsslVersion string
 
 	// CaFile is the path to a file of CA certificates in PEM format.
@@ -75,34 +75,34 @@ type TLSConfig struct {
 	// CaPath is the path to a directory containing CA certificates in PEM format.
 	CaPath string
 
-	// MinVersion is the minimum TLS version to accept
+	// MinVersion is the minimum TLS version to accept.
 	MinVersion int64
 
-	// MaxVersion is the maximum TLS version to use
+	// MaxVersion is the maximum TLS version to use.
 	MaxVersion int64
 
-	// TLSMethod is the TLS method to use
+	// TLSMethod is the TLS method to use.
 	Method Method
 
-	// VerifyMode controls how peer certificates are verified
+	// VerifyMode controls how peer certificates are verified.
 	VerifyMode VerifyMode
 
-	// CertificateChecks controls X.509 certificate verification
+	// CertificateChecks controls X.509 certificate verification.
 	CertificateChecks X509VerifyFlags
 
-	// SessionTicketsDisabled disables session ticket support
+	// SessionTicketsDisabled disables session ticket support.
 	SessionTicketsDisabled bool
 
-	// SessionCacheDisabled disables session caching
+	// SessionCacheDisabled disables session caching.
 	SessionCacheDisabled bool
 
-	// CompressionDisabled disables session caching
+	// CompressionDisabled disables session caching.
 	CompressionDisabled bool
 
-	// RenegotiationDisabled disables all renegotiation
+	// RenegotiationDisabled disables all renegotiation.
 	RenegotiationDisabled bool
 
-	// Timeout is the maximum amount of time a dial will wait for
+	// DialTimeout is the maximum amount of time a dial will wait for
 	// a connect to complete. If Deadline is also set, it may fail
 	// earlier.
 	//
@@ -116,30 +116,30 @@ type TLSConfig struct {
 	// often around 3 minutes.
 	DialTimeout time.Duration
 
-	// Deadline is the absolute point in time after which dials
+	// DialDeadline is the absolute point in time after which dials
 	// will fail. If Timeout is set, it may fail earlier.
 	// Zero means no deadline, or dependent on the operating system
 	// as with the Timeout option.
 	DialDeadline time.Time
 
-	// TraceEnabled
-	DialTraceEnabled bool
+	// TraceEnabled enables debug tracing in the [Conn].
+	TraceEnabled bool
 }
 
-// DefaultConfig returns a [Config] with sane default options. The default context is uninitialized.
+// DefaultConfig returns a [TLSConfig] with sane default options. The default context is uninitialized.
 func NewDefaultTLS() *TLSConfig {
 	return &TLSConfig{
 		Method:            ClientMethod,
-		MinVersion:        libssl.TLS1_2_VERSION,
+		MinVersion:        TLSv12,
 		VerifyMode:        VerifyPeer,
 		CertificateChecks: X509CheckTimeValidity,
 	}
 }
 
-// TLSOption is a functional option for configuring TLSConfig
+// TLSOption is a functional option for configuring [TLSConfig].
 type TLSOption func(*TLSConfig)
 
-// NewTLS creates a new TLSConfig with the given options
+// NewTLS creates a new [TLSConfig] with the given options.
 func NewTLS(opts ...TLSOption) *TLSConfig {
 	cfg := NewDefaultTLS()
 	for _, opt := range opts {
@@ -148,14 +148,14 @@ func NewTLS(opts ...TLSOption) *TLSConfig {
 	return cfg
 }
 
-// WithLibsslVersion sets the libssl version to dynamically load
+// WithLibsslVersion sets the libssl version to dynamically load.
 func WithLibsslVersion(version string) TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.LibsslVersion = version
 	}
 }
 
-// WithCaFile sets the path to a file of CA certificates in PEM format
+// WithCaFile sets the path to a file of CA certificates in PEM format.
 func WithCaFile(path string) TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.CaPath = filepath.Dir(path)
@@ -163,83 +163,86 @@ func WithCaFile(path string) TLSOption {
 	}
 }
 
-// WithMinVersion sets the minimum TLS version to accept
+// WithMinVersion sets the minimum TLS version to accept.
 func WithMinVersion(version int64) TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.MinVersion = version
 	}
 }
 
-// WithMaxVersion sets the maximum TLS version to use
+// WithMaxVersion sets the maximum TLS version to use.
 func WithMaxVersion(version int64) TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.MaxVersion = version
 	}
 }
 
-// WithMethod sets the TLS method to use
+// WithMethod sets the TLS method to use.
 func WithMethod(method Method) TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.Method = method
 	}
 }
 
-// WithVerifyMode sets the certificate verification mode
+// WithVerifyMode sets the certificate verification mode.
 func WithVerifyMode(mode VerifyMode) TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.VerifyMode = mode
 	}
 }
 
-// WithCertificateChecks sets the certificate verification flags
+// WithCertificateChecks sets the certificate verification flags.
 func WithCertificateChecks(flags X509VerifyFlags) TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.CertificateChecks = flags
 	}
 }
 
-// WithSessionTicketsDisabled disables session ticket support
+// WithSessionTicketsDisabled disables session ticket support.
 func WithSessionTicketsDisabled() TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.SessionTicketsDisabled = true
 	}
 }
 
-// WithSessionCacheDisabled disables session caching
+// WithSessionCacheDisabled disables session caching.
 func WithSessionCacheDisabled() TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.SessionCacheDisabled = true
 	}
 }
 
-// WithCompressionDisabled disables compression
+// WithCompressionDisabled disables compression.
 func WithCompressionDisabled() TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.CompressionDisabled = true
 	}
 }
 
-// WithRenegotiationDisabled disables all renegotiation
+// WithRenegotiationDisabled disables all renegotiation.
 func WithRenegotiationDisabled() TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.RenegotiationDisabled = true
 	}
 }
 
-func WithTimeout(t time.Duration) TLSOption {
+// WithDialTimeout is the timeout used for the [Dialer].
+func WithDialTimeout(t time.Duration) TLSOption {
 	return func(d *TLSConfig) {
 		d.DialTimeout = t
 	}
 }
 
-func WithDeadline(t time.Time) TLSOption {
+// WithDialTimeout is the deadline used for the [Dialer].
+func WithDialDeadline(t time.Time) TLSOption {
 	return func(d *TLSConfig) {
 		d.DialDeadline = t
 	}
 }
 
+// WithConnTrace enables [Conn] trace logging to stdout.
 func WithConnTrace() TLSOption {
 	return func(d *TLSConfig) {
-		d.DialTraceEnabled = true
+		d.TraceEnabled = true
 	}
 }

@@ -87,7 +87,7 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		ctx.Close()
 		return nil, err
 	}
-	return NewConn(ssl, ctx.closer, ctx.TLS.DialTraceEnabled)
+	return NewConn(ssl, ctx.closer, ctx.TLS.TraceEnabled)
 }
 
 // deadline returns the earliest of:
