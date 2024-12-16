@@ -152,16 +152,16 @@ ok      github.com/aristanetworks/go-openssl-fips/ossl  11.497s
 ```
 
 ```
-> go test -bench "BenchmarkClientSSLCached*" -benchmem -run ^$
+> go test -bench "BenchmarkClientCachedSSL*" -benchmem -run ^$
 goos: linux
 goarch: amd64
 pkg: github.com/aristanetworks/go-openssl-fips/ossl
 cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
-BenchmarkClientSSLCached/Custom_OSSL_Client_GET-96                    32          44713086 ns/op           87994 B/op        251 allocs/op
-BenchmarkClientSSLCached/Custom_OSSL_Client_POST-96                   28          39470444 ns/op           90531 B/op        187 allocs/op
-BenchmarkClientSSLCached/Custom_OSSL_Client_MIXED-96                  28          41549595 ns/op           88561 B/op        209 allocs/op
+BenchmarkClientCachedSSL/Custom_OSSL_Client_Cached_GET-96                     30          46490736 ns/op           88611 B/op        251 allocs/op
+BenchmarkClientCachedSSL/Custom_OSSL_Client_Cached_POST-96                    28          40520187 ns/op           88877 B/op        186 allocs/op
+BenchmarkClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96                   31          43065017 ns/op           92676 B/op        223 allocs/op
 PASS
-ok      github.com/aristanetworks/go-openssl-fips/ossl  4.401s
+ok      github.com/aristanetworks/go-openssl-fips/ossl  4.580s
 ```
 
 ```

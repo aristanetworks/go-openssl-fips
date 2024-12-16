@@ -84,7 +84,7 @@ func BenchmarkClientSSL(b *testing.B) {
 	})
 }
 
-func BenchmarkClientSSLCached(b *testing.B) {
+func BenchmarkClientCachedSSL(b *testing.B) {
 	defer testutils.LeakCheckLSAN(b)
 	osslClient, ctx, err := ossl.NewClientWithCachedCtx()
 	if err != nil {
@@ -93,7 +93,7 @@ func BenchmarkClientSSLCached(b *testing.B) {
 	defer ctx.Close()
 	b.ResetTimer()
 
-	b.Run("Custom OSSL Client GET", func(b *testing.B) {
+	b.Run("Custom OSSL Client Cached GET", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			req, _ := http.NewRequest("GET", getUrl, nil)
 			resp, err := osslClient.Transport.RoundTrip(req)
@@ -110,7 +110,7 @@ func BenchmarkClientSSLCached(b *testing.B) {
 		}
 	})
 
-	b.Run("Custom OSSL Client POST", func(b *testing.B) {
+	b.Run("Custom OSSL Client Cached POST", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			payload := []byte(`{"key": "value"}`)
 			req, _ := http.NewRequest("POST", postUrl, bytes.NewBuffer(payload))
@@ -123,7 +123,7 @@ func BenchmarkClientSSLCached(b *testing.B) {
 		}
 	})
 
-	b.Run("Custom OSSL Client MIXED", func(b *testing.B) {
+	b.Run("Custom OSSL Client Cached MIXED", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			if rand.Intn(2) == 0 {
 				req, _ := http.NewRequest("GET", getUrl, nil)
