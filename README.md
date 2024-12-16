@@ -100,9 +100,9 @@ func main() {
 }
 ```
 
-### 2. Creating a Client with a Cacheable Context
+### 2. Creating a Client with a Cached Context
 
-This example demonstrates how to create an `http.Client` with a cacheable `ossl.Context`. This allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
+This example demonstrates how to create an `http.Client` with a cached `ossl.Context`. This allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
 
 ```go
 import (
@@ -130,10 +130,113 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewClientWithCtx`, it's the caller's responsibility to close the `Context` using `ctx.Close()` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewClientWithCachedCtx`, it's the caller's responsibility to close the `Context` using `ctx.Close()` when it's no longer needed. This will free the associated C memory.
 
-These examples provide a starting point for using the `ossl` package. Refer to the documentation for more detailed information and advanced usage scenarios.
 
+## ossl.Dialer Examples
+
+``` go
+// NewCtx returns the default context that will be used to intiialize new derived
+// contexts.
+func NewCtx(opts ...TLSOption) *Context
+
+// NewCachedCtx creates a new [Context] that will be reused in creating [SSL] connections.
+//
+// The caller is responsible for freeing the C memory allocated by the [Context] by calling
+// [Context.Close].
+//
+// Any context derived from a cached context will reference the underlying [libssl.SSLCtx] for
+// creating [SSL] connections, but will be unable to free the allocated C memory.
+func NewCachedCtx(opts ...TLSOption) (ctx *Context, err error)
+
+// NewContextDialer returns a dialer function for grpc to create [SSL] connections.
+// The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
+func (d *Dialer) NewContextDialer(ctx context.Context, network, addr string)
+```
+
+
+### 1. Creating a Default Dialer
+
+This example demonstrates how to create a default `Dialer` with default options using `NewCtx`. The underlying `libssl.SSLCtx` is managed by the `Dialer`.
+
+``` go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/aristanetworks/go-openssl-fips/ossl"
+	"google.golang.org/grpc"
+)
+
+func main() {
+	// Create an ossl.Dialer with the custom context
+	dialer := &ossl.Dialer{Ctx: ossl.NewCtx(ossl.WithCaFile("/path/to/cert.pem"))}
+
+	// Use grpc.WithContextDialer to create a gRPC connection that will create
+	// a new Context every dial
+	conn, err := grpc.DialContext(
+		context.Background(),
+		"your-grpc-server-address:port",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(dialer.NewContextDialer),
+	)
+	if err != nil {
+		log.Fatalf("Failed to dial gRPC server: %v", err)
+	}
+	// this will free the C memory allocated by the context
+	defer conn.Close()
+
+	// ... use the gRPC connection ...
+}
+```
+
+### 2. Creating a Dialer with a Cached Context
+
+This example demonstrates how to create a `Dialer` with a cached `ossl.Context` using `NewCachedCtx`. This allows the `libssl.SSLCtx` to be reused for creating `SSL` connections in the dial function.
+
+``` go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/aristanetworks/go-openssl-fips/ossl"
+	"google.golang.org/grpc"
+)
+
+func main() {
+	// Create an ossl.Dialer with a cached context
+	ctx, err := ossl.NewCachedCtx(ossl.WithCaFile("/path/to/cert.pem"))
+	if err != nil {
+		log.Fatalf("Failed to create context: %v", err)
+	}
+	// this will free the C memory allocated by the context
+	defer ctx.Close()
+	dialer := &ossl.Dialer{Ctx: ctx}
+
+	// Use grpc.WithContextDialer to create a gRPC connection that will reuse
+	// the context to to create SSL connections.
+	conn, err := grpc.DialContext(
+		context.Background(),
+		"your-grpc-server-address:port",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(dialer.NewContextDialer),
+	)
+	if err != nil {
+		log.Fatalf("Failed to dial gRPC server: %v", err)
+	}
+	defer conn.Close()
+
+	// ... use the gRPC connection ...
+}
+```
+
+**Note:** In the case of `NewCachedCtx`, it's the caller's responsibility to close the `Context` using `ctx.Close()` when it's no longer needed. This will free the associated C memory.
 
 ## Benchmarks
 
