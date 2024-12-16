@@ -51,6 +51,122 @@ This feature does not require any additional configuration, but it only works wi
 - Only Unix, Unix-like and Windows platforms are supported.
 - The build must set `CGO_ENABLED=1`.
 
+## http.Client Examples
+
+``` go
+// NewDefaultClient returns an [http.Client] with a [Transport]. The context
+// is not cached and will be re-created every RoundTrip. That means the caller
+// does not need to to worry about freeing C memory allocated by the [Context].
+func NewDefaultClient(opts ...TLSOption) *http.Client
+
+// NewClientFromCtx returns [http.Client] with a [Transport] initialized from a
+// [Context]. It falls back to [http.Client] if the [Context] is nil.
+func NewClientFromCtx(ctx *Context) *http.Client
+
+// NewClientWithCtx returns an [http.Client] with [Transport] initialized from
+// a context that will be reused across [SSL] dials by the [Dialer].
+//
+// It is the caller's responsibility to close the context with [Context.Close].
+// This will free the C memory allocated by [Context].
+func NewClientWithCtx(opts ...TLSOption) (*http.Client, *Context, error)
+```
+
+### 1. Creating a Default Client
+
+This example demonstrates how to create a default `http.Client` with TLS configured using `NewDefaultClient`. The underlying `libssl.SSLCtx` is managed by the client and recreated for each roundtrip.
+
+```go
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/aristanetworks/go-openssl-fips/ossl"
+)
+
+func main() {
+	// Create a default client with TLS configured for TLS 1.3
+	client := ossl.NewDefaultClient(ossl.WithMinVersion(ossl.TLSv13))
+
+	// Use the client to make HTTPS requests
+	resp, err := client.Get("https://example.com")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// ... process the response ...
+}
+```
+
+### 2. Creating a Client with a Custom Context
+
+This example shows how to create an `http.Client` with a custom `ossl.Context`. This allows for more fine-grained control over TLS configuration and context management.
+
+```go
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/aristanetworks/go-openssl-fips/ossl"
+)
+
+func main() {
+	// Create a custom Context with specific options
+	ctx, err := ossl.NewCtx(
+		ossl.WithCaFile("/path/to/ca.pem"),
+		ossl.WithVerifyMode(ossl.VerifyFailIfNoPeerCert),
+	)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer ctx.Close() // Close the Context when done
+
+	// Create a client using the custom Context
+	client := ossl.NewClientFromCtx(ctx)
+
+	// Use the client to make HTTPS requests
+	resp, err := client.Get("https://example.com")
+	// ...
+}
+```
+
+### 3. Creating a Client with a Cacheable Context
+
+This example demonstrates how to create an `http.Client` with a cacheable `ossl.Context`. This allows the `libssl.SSLCtx` to be reused across multiple roundtrips, potentially improving performance.
+
+```go
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/aristanetworks/go-openssl-fips/ossl"
+)
+
+func main() {
+	// Create a client with a cacheable Context
+	client, ctx, err := ossl.NewClientWithCtx(true)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer ctx.Close() // Close the Context when done
+
+	// Use the client to make HTTPS requests
+	_, err = client.Get("https://example.com")
+	// ...
+
+	_, err = client.Get("https://another.example.com")
+	// ...
+}
+```
+
+**Note:** In the case of `NewClientWithCtx`, it's the caller's responsibility to close the `Context` using `ctx.Close()` when it's no longer needed. This will free the associated C memory.
+
+These examples provide a starting point for using the `ossl` package. Refer to the documentation for more detailed information and advanced usage scenarios.
+
+
 ## Benchmarks
 
 Some benchmark results comparing the `ossl.Client` to `http.Client`. The server used in the tests is httpbingo.org.

@@ -2,7 +2,6 @@ package ossl
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
@@ -10,30 +9,35 @@ import (
 // Context stores configuration options used to create [SSL] connections.
 type Context struct {
 	ctx    *libssl.SSLCtx
-	closer io.Closer
+	closer Closer
 	cached bool
 	TLS    *TLSConfig
 }
 
-func NewDefaultTLSContext(opts ...TLSOption) *Context {
-	tls := NewTLS()
-	for _, o := range opts {
-		o(tls)
-	}
+// NewCtx returns the default context that will be used to intiialize new derived
+// contexts.
+func NewCtx(opts ...TLSOption) *Context {
 	return &Context{
 		closer: noopCloser{},
-		TLS:    tls,
+		TLS:    NewTLS(opts...),
 	}
 }
 
-// NewContext creates a new [Context] using the supplied [Config].
-func NewContext(opts ...TLSOption) (ctx *Context, err error) {
-	ctx = &Context{}
-	ctx.cached = ctx.TLS.CachedContext
-	if ctx.cached {
-		if err = ctx.makeCloseable(ctx); err != nil {
-			return nil, err
-		}
+// NewCachedCtx creates a new [Context] that will be reused in creating [SSL] connections.
+//
+// The caller is responsible for freeing the C memory allocated by the [Context] by calling
+// [Context.Close].
+//
+// Any context derived from a cached context will reference the underlying [libssl.SSLCtx] for
+// creating [SSL] connections, but will be unable to free the allocated C memory.
+func NewCachedCtx(opts ...TLSOption) (ctx *Context, err error) {
+	ctx = NewCtx(opts...)
+	ctx.cached = true
+	if !ctx.cached {
+		return ctx, nil
+	}
+	if err = ctx.makeCloseable(ctx); err != nil {
+		return nil, err
 	}
 	return ctx, nil
 }
@@ -165,9 +169,9 @@ func (c *Context) makeCloseable(cc *Context) (err error) {
 	return nil
 }
 
-// NewCtx returns a new Context derived from this [Context]. It either references
+// New returns a new Context derived from this [Context]. It either references
 // this context or creates one from [Context.TLS] configuration.
-func (c *Context) NewCtx() (ctx *Context, err error) {
+func (c *Context) New() (ctx *Context, err error) {
 	ctx = &Context{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
 	if !c.cached {
 		if err = c.makeCloseable(ctx); err != nil {

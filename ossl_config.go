@@ -7,6 +7,16 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
+// TLS version constants
+type TLSVersion int
+
+const (
+	TLSv1  = libssl.TLS1_VERSION
+	TLSv11 = libssl.TLS1_1_VERSION
+	TLSv12 = libssl.TLS1_2_VERSION
+	TLSv13 = libssl.TLS1_3_VERSION
+)
+
 // Method represents TLS method modes
 type Method int
 
@@ -91,9 +101,6 @@ type TLSConfig struct {
 
 	// RenegotiationDisabled disables all renegotiation
 	RenegotiationDisabled bool
-
-	// CachedContext
-	CachedContext bool
 
 	// Timeout is the maximum amount of time a dial will wait for
 	// a connect to complete. If Deadline is also set, it may fail
@@ -216,13 +223,6 @@ func WithCompressionDisabled() TLSOption {
 func WithRenegotiationDisabled() TLSOption {
 	return func(cfg *TLSConfig) {
 		cfg.RenegotiationDisabled = true
-	}
-}
-
-// WithCachedCtx()
-func WithCachedCtx() TLSOption {
-	return func(cfg *TLSConfig) {
-		cfg.CachedContext = true
 	}
 }
 

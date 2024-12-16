@@ -9,25 +9,15 @@ import (
 
 // Dialer is used for dialing [SSL] connections.
 type Dialer struct {
-	// Ctx is the [SSLContext] that will be used for creating [SSL] connections. If this is nil, then
-	// [Dialer.Dial] will create a new [SSLContext] every invocation.
+	// Ctx is the [Context] that will be used for creating [SSL] connections.
 	Ctx *Context
-}
-
-// NewDialer returns the [SSL] dialer configured with [Config]. If [Context] is nil, then
-// [Dialer.DialContext] will create one that will be freed in [Conn.Close].
-func NewDialer(ctx *Context) (d *Dialer) {
-	if ctx == nil {
-		return nil
-	}
-	return &Dialer{Ctx: ctx}
 }
 
 // DialContext specifies a dial function for creating [SSL] connections.
 // The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	if err := Init(d.Ctx.TLS.LibsslVersion); err != nil {
-		return nil, err
+	if !libsslInit {
+		return nil, ErrNoLibSslInit
 	}
 	bio, err := d.dialBIO(ctx, network, addr)
 	if err != nil {
@@ -86,7 +76,7 @@ func parseNetwork(network string) (int, error) {
 }
 
 func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
-	ctx, err := d.Ctx.NewCtx()
+	ctx, err := d.Ctx.New()
 	if err != nil {
 		ctx.Close()
 		return nil, err
@@ -97,7 +87,7 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		ctx.Close()
 		return nil, err
 	}
-	return NewConn(ssl, ctx, ctx.TLS.DialTraceEnabled)
+	return NewConn(ssl, ctx.closer, ctx.TLS.DialTraceEnabled)
 }
 
 // deadline returns the earliest of:

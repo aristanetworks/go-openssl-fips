@@ -6,7 +6,8 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
-// SSL represents a single SSL connection. It inherits configuration options from [Context].
+// SSL represents a single SSL connection. It inherits configuration options
+// from [Context].
 type SSL struct {
 	ssl    *libssl.SSL
 	bio    *BIO
@@ -121,7 +122,8 @@ func (s *SSL) Write(b []byte) (int, error) {
 	return numBytes, nil
 }
 
-// Shutdown will send a close-notify alert to the peer to gracefully shutdown the [SSL] connection.
+// Shutdown will send a close-notify alert to the peer to gracefully shutdown
+// the [SSL] connection.
 func (s *SSL) Shutdown() error {
 	if s.closed {
 		return s.closer.Err()

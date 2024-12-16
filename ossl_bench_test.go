@@ -28,7 +28,7 @@ func init() {
 
 func BenchmarkClientSSL(b *testing.B) {
 	defer testutils.LeakCheckLSAN(b)
-	osslClient := ossl.NewTLSClient()
+	osslClient := ossl.NewDefaultClient()
 	b.ResetTimer()
 
 	b.Run("Custom OSSL Client GET", func(b *testing.B) {

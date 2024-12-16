@@ -26,7 +26,7 @@ func TestTransportConcurrency(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("SSL Transport", func(t *testing.T) {
-		client := ossl.NewTLSClient(ossl.WithCaFile(ts.CaFile), ossl.WithConnTrace())
+		client := ossl.NewDefaultClient(ossl.WithCaFile(ts.CaFile), ossl.WithConnTrace())
 		createRequests(t, ts, client)
 	})
 

@@ -37,7 +37,7 @@ func init() {
 
 func TestStreamJSON(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	client := ossl.NewTLSClient()
+	client := ossl.NewDefaultClient()
 
 	tests := []struct {
 		name          string

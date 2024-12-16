@@ -8,7 +8,8 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
-// runWithLockedOSThread ensures the given function executes with the goroutine locked to an OS thread.
+// runWithLockedOSThread ensures the given function executes with the goroutine
+// locked to an OS thread.
 func runWithLockedOSThread(fn func() error) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -23,11 +24,13 @@ type Closer interface {
 	io.Closer
 }
 
+// noopCloser is the default closer that does nothing.
 type noopCloser struct{}
 
 func (noopCloser) Err() error   { return nil }
 func (noopCloser) Close() error { return nil }
 
+// onceCloser will call closeFunc once and store the return error.
 type onceCloser struct {
 	closeOnce sync.Once
 	closeFunc func() error

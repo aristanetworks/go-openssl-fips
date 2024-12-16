@@ -2,7 +2,6 @@ package ossl
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"syscall"
 
@@ -12,7 +11,7 @@ import (
 // BIO is the basic I/O abstraction used by [SSL] for reading from and writing to sockets.
 type BIO struct {
 	bio        *libssl.BIO
-	closer     io.Closer
+	closer     Closer
 	hostname   string
 	port       string
 	sockfd     int
