@@ -151,7 +151,7 @@ func NewCachedCtx(opts ...TLSOption) (ctx *Context, err error)
 
 // NewContextDialer returns a dialer function for grpc to create [SSL] connections.
 // The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
-func (d *Dialer) NewContextDialer(ctx context.Context, network, addr string)
+func (d *Dialer) NewContextDialer(ctx context.Context, network, addr string) func(context.Context, string) (net.Conn, error)
 ```
 
 
