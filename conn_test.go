@@ -16,12 +16,6 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
 )
 
-func init() {
-	if err := ossl.Init(""); err != nil {
-		panic(err)
-	}
-}
-
 func TestSSLConn(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)

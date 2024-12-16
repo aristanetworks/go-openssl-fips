@@ -169,7 +169,7 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	return nil
 }
 
-// Ctx returns the allocated [libssl.SSLCtx] C object.
+// Ctx returns a pointer to the underlying [libssl.SSLCtx] C object.
 func (c *Context) Ctx() *libssl.SSLCtx {
 	return c.ctx
 }
@@ -179,6 +179,7 @@ func (c *Context) Close() error {
 	return c.closer.Close()
 }
 
+// makeCloseable will create a new [libssl.SSLCtx] and add a closer to free it.
 func (c *Context) makeCloseable(cc *Context) (err error) {
 	cc.ctx, err = c.new()
 	if err != nil {
@@ -193,7 +194,7 @@ func (c *Context) makeCloseable(cc *Context) (err error) {
 }
 
 // New returns a new Context derived from this [Context]. It either references
-// the [libssl.SSLCtx] or creates one from the [Context.TLS] configuration.
+// the [libssl.SSLCtx] or creates a new one from the [TLSConfig].
 func (c *Context) New() (ctx *Context, err error) {
 	ctx = &Context{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
 	if !c.cached {

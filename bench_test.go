@@ -20,15 +20,77 @@ var (
 	getUrl, _  = url.JoinPath(URL, "get")
 )
 
-func init() {
-	if err := ossl.Init(""); err != nil {
-		panic(err)
-	}
-}
-
 func BenchmarkClientSSL(b *testing.B) {
 	defer testutils.LeakCheckLSAN(b)
 	osslClient := ossl.NewDefaultClient()
+	b.ResetTimer()
+
+	b.Run("Custom OSSL Client GET", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			req, _ := http.NewRequest("GET", getUrl, nil)
+			resp, err := osslClient.Transport.RoundTrip(req)
+			if err != nil {
+				b.Fatalf("Request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			var body map[string]interface{}
+			err = json.NewDecoder(resp.Body).Decode(&body)
+			if err != nil {
+				b.Fatalf("Invalid JSON response: %v", err)
+			}
+		}
+	})
+
+	b.Run("Custom OSSL Client POST", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			payload := []byte(`{"key": "value"}`)
+			req, _ := http.NewRequest("POST", postUrl, bytes.NewBuffer(payload))
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := osslClient.Transport.RoundTrip(req)
+			if err != nil {
+				b.Fatalf("Request failed: %v", err)
+			}
+			defer resp.Body.Close()
+		}
+	})
+
+	b.Run("Custom OSSL Client MIXED", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if rand.Intn(2) == 0 {
+				req, _ := http.NewRequest("GET", getUrl, nil)
+				resp, err := osslClient.Transport.RoundTrip(req)
+				if err != nil {
+					b.Fatalf("GET request failed: %v", err)
+				}
+				defer resp.Body.Close()
+
+				var body map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&body)
+				if err != nil {
+					b.Fatalf("Invalid JSON response: %v", err)
+				}
+			} else {
+				payload := []byte(`{"key": "value"}`)
+				req, _ := http.NewRequest("POST", postUrl, bytes.NewBuffer(payload))
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := osslClient.Transport.RoundTrip(req)
+				if err != nil {
+					b.Fatalf("POST request failed: %v", err)
+				}
+				defer resp.Body.Close()
+			}
+		}
+	})
+}
+
+func BenchmarkClientSSLCached(b *testing.B) {
+	defer testutils.LeakCheckLSAN(b)
+	osslClient, ctx, err := ossl.NewClientWithCachedCtx()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer ctx.Close()
 	b.ResetTimer()
 
 	b.Run("Custom OSSL Client GET", func(b *testing.B) {

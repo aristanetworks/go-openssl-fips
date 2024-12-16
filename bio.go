@@ -47,17 +47,17 @@ func NewBIO(addr string, family, mode int) (b *BIO, err error) {
 	return b, nil
 }
 
-// BIO will return the underlying [libssl.BIO].
+// BIO returns a pointer to the underlying [libssl.BIO] C object.
 func (b *BIO) BIO() *libssl.BIO {
 	return b.bio
 }
 
-// Hostname will return the peer hostname.
+// Hostname returns the peer hostname.
 func (b *BIO) Hostname() string {
 	return b.hostname
 }
 
-// setAddrInfo will return the local and remote addresses of the [BIO] socket connection.
+// setAddrInfo initializes the local and remote addresses of the [BIO] socket connection.
 func (b *BIO) setAddrInfo() (err error) {
 	sockname, err := syscall.Getsockname(b.sockfd)
 	if err != nil {

@@ -55,25 +55,23 @@ This feature does not require any additional configuration, but it only works wi
 
 ``` go
 // NewDefaultClient returns an [http.Client] with a [Transport]. The context
-// is not cached and will be re-created every RoundTrip. That means the caller
-// does not need to to worry about freeing C memory allocated by the [Context].
+// is not cached and will be re-created every RoundTrip.
+//
+// The caller does not need to worry about explictly freeing C memory allocated
+// by the [Context].
 func NewDefaultClient(opts ...TLSOption) *http.Client
 
-// NewClientFromCtx returns [http.Client] with a [Transport] initialized from a
-// [Context]. It falls back to [http.Client] if the [Context] is nil.
-func NewClientFromCtx(ctx *Context) *http.Client
-
-// NewClientWithCtx returns an [http.Client] with [Transport] initialized from
+// NewClientWithCachedCtx returns an [http.Client] with [Transport] initialized by
 // a context that will be reused across [SSL] dials by the [Dialer].
 //
 // It is the caller's responsibility to close the context with [Context.Close].
-// This will free the C memory allocated by [Context].
-func NewClientWithCtx(opts ...TLSOption) (*http.Client, *Context, error)
+// Closing the context will free the C memory allocated by it.
+func NewClientWithCachedCtx(opts ...TLSOption) (*http.Client, *Context, error)
 ```
 
 ### 1. Creating a Default Client
 
-This example demonstrates how to create a default `http.Client` with TLS configured using `NewDefaultClient`. The underlying `libssl.SSLCtx` is managed by the client and recreated for each roundtrip.
+This example demonstrates how to create a default `http.Client` with TLS configured using `NewDefaultClient`. The underlying `libssl.SSLCtx` is managed by the `Dialer` and recreated for each roundtrip.
 
 ```go
 import (
@@ -85,7 +83,10 @@ import (
 
 func main() {
 	// Create a default client with TLS configured for TLS 1.3
-	client := ossl.NewDefaultClient(ossl.WithMinVersion(ossl.TLSv13))
+	client := ossl.NewDefaultClient(
+		ossl.WithCaFile("/path/to/cert.pem"),
+		ossl.WithMinVersion(ossl.TLSv13),
+	)
 
 	// Use the client to make HTTPS requests
 	resp, err := client.Get("https://example.com")
@@ -99,42 +100,9 @@ func main() {
 }
 ```
 
-### 2. Creating a Client with a Custom Context
+### 2. Creating a Client with a Cacheable Context
 
-This example shows how to create an `http.Client` with a custom `ossl.Context`. This allows for more fine-grained control over TLS configuration and context management.
-
-```go
-import (
-	"fmt"
-	"net/http"
-
-	"github.com/aristanetworks/go-openssl-fips/ossl"
-)
-
-func main() {
-	// Create a custom Context with specific options
-	ctx, err := ossl.NewCtx(
-		ossl.WithCaFile("/path/to/ca.pem"),
-		ossl.WithVerifyMode(ossl.VerifyFailIfNoPeerCert),
-	)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	defer ctx.Close() // Close the Context when done
-
-	// Create a client using the custom Context
-	client := ossl.NewClientFromCtx(ctx)
-
-	// Use the client to make HTTPS requests
-	resp, err := client.Get("https://example.com")
-	// ...
-}
-```
-
-### 3. Creating a Client with a Cacheable Context
-
-This example demonstrates how to create an `http.Client` with a cacheable `ossl.Context`. This allows the `libssl.SSLCtx` to be reused across multiple roundtrips, potentially improving performance.
+This example demonstrates how to create an `http.Client` with a cacheable `ossl.Context`. This allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
 
 ```go
 import (
@@ -145,8 +113,8 @@ import (
 )
 
 func main() {
-	// Create a client with a cacheable Context
-	client, ctx, err := ossl.NewClientWithCtx(true)
+	// Create a client with an cached Context
+	client, ctx, err := ossl.NewClientWithCachedCtx()
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
@@ -176,11 +144,24 @@ goos: linux
 goarch: amd64
 pkg: github.com/aristanetworks/go-openssl-fips/ossl
 cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
-BenchmarkClientSSL/Custom_OSSL_Client_GET-96                  27          45898493 ns/op           84971 B/op        233 allocs/op
-BenchmarkClientSSL/Custom_OSSL_Client_POST-96                 30          40696457 ns/op           86030 B/op        171 allocs/op
-BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                31          43308677 ns/op           94426 B/op        202 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_GET-96                  14          97719506 ns/op           88790 B/op        253 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_POST-96                 14         450657159 ns/op           91713 B/op        191 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                15         105323361 ns/op           91306 B/op        220 allocs/op
 PASS
-ok      github.com/aristanetworks/go-openssl-fips/ossl       5.408s
+ok      github.com/aristanetworks/go-openssl-fips/ossl  11.497s
+```
+
+```
+> go test -bench "BenchmarkClientSSLCached*" -benchmem -run ^$
+goos: linux
+goarch: amd64
+pkg: github.com/aristanetworks/go-openssl-fips/ossl
+cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
+BenchmarkClientSSLCached/Custom_OSSL_Client_GET-96                    32          44713086 ns/op           87994 B/op        251 allocs/op
+BenchmarkClientSSLCached/Custom_OSSL_Client_POST-96                   28          39470444 ns/op           90531 B/op        187 allocs/op
+BenchmarkClientSSLCached/Custom_OSSL_Client_MIXED-96                  28          41549595 ns/op           88561 B/op        209 allocs/op
+PASS
+ok      github.com/aristanetworks/go-openssl-fips/ossl  4.401s
 ```
 
 ```

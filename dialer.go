@@ -16,8 +16,8 @@ type Dialer struct {
 // DialContext specifies a dial function for creating [SSL] connections.
 // The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	if !libsslInit {
-		return nil, ErrNoLibSslInit
+	if err := Init(d.Ctx.TLS.LibsslVersion); err != nil {
+		return nil, err
 	}
 	bio, err := d.dialBIO(ctx, network, addr)
 	if err != nil {

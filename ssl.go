@@ -53,12 +53,12 @@ func (s *SSL) withBIO(b *BIO) error {
 	return nil
 }
 
-// SSL
+// SSL returns a pointer to the underlying [libssl.SSL] C object.
 func (s *SSL) SSL() *libssl.SSL {
 	return s.ssl
 }
 
-// FD returns the socket file descriptor used by [SSL].
+// FD returns the socket file descriptor used by [SSL] C object.
 func (s *SSL) FD() int {
 	return s.bio.FD()
 }
