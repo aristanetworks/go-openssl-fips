@@ -4,17 +4,23 @@ import (
 	"net/http"
 )
 
-// NewClientWithClose returns an [http.Client] with [SSL] transport.
-func NewClient(ctx *SSLContext, opts ...ConfigOption) (*http.Client, error) {
-	c := DefaultConfig()
-	for _, o := range opts {
-		o(c)
+// NewClient returns an [http.Client] with [SSL] transport.
+func NewClient(ctx *Context, opts ...TLSOption) *http.Client {
+	if ctx == nil {
+		ctx = NewDefaultTLSContext(opts...)
 	}
 	return &http.Client{
-		Timeout: c.Timeout,
 		Transport: &Transport{
-			DisableCompression: c.TransportCompressionDisabled,
-			Dialer:             &Dialer{Ctx: ctx, Timeout: c.Timeout, Config: c},
+			Dialer: NewDialer(ctx),
 		},
-	}, nil
+	}
+}
+
+// NewTLSClient returns an [http.Client] with [SSL] transport.
+func NewTLSClient(opts ...TLSOption) *http.Client {
+	return &http.Client{
+		Transport: &Transport{
+			Dialer: NewDialer(NewDefaultTLSContext(opts...)),
+		},
+	}
 }

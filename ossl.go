@@ -2,46 +2,59 @@ package ossl
 
 import (
 	"net"
-	"sync"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
 )
 
-// SSL represents a single SSL connection. It inherits configuration options from [SSLContext].
+// SSL represents a single SSL connection. It inherits configuration options from [Context].
 type SSL struct {
-	ssl       *libssl.SSL
-	bio       *BIO
-	closeOnce sync.Once
-	closeErr  error
-	closed    bool
+	ssl    *libssl.SSL
+	bio    *BIO
+	closed bool
+	closer Closer
 }
 
-// NewSSL creates an [SSL] object using [SSLContext]. [SSL] is used for creating
+// NewSSL creates an [SSL] object using [Context]. [SSL] is used for creating
 // a single TLS connection.
-func NewSSL(ctx *SSLContext, bio *BIO) (*SSL, error) {
+func NewSSL(ctx *Context, bio *BIO) (s *SSL, err error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
-	var ssl *SSL
+	s = &SSL{closer: noopCloser{}}
 	if err := runWithLockedOSThread(func() error {
-		s, err := libssl.NewSSL(ctx.ctx)
+		s.ssl, err = libssl.NewSSL(ctx.Ctx())
 		if err != nil {
-			libssl.SSLFree(s)
+			libssl.SSLFree(s.ssl)
 			return err
 		}
-		if err := libssl.SSLConfigureBIO(s, bio.bio, bio.hostname); err != nil {
-			libssl.SSLFree(s)
+		if err := s.withBIO(bio); err != nil {
+			libssl.SSLFree(s.ssl)
 			return err
-		}
-		ssl = &SSL{
-			ssl: s,
-			bio: bio,
 		}
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	return ssl, nil
+	s.closer = &onceCloser{
+		closeFunc: func() error {
+			s.closed = true
+			return libssl.SSLFree(s.ssl)
+		},
+	}
+	return s, nil
+}
+
+func (s *SSL) withBIO(b *BIO) error {
+	s.bio = b
+	if err := libssl.SSLConfigureBIO(s.ssl, b.BIO(), b.Hostname()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SSL
+func (s *SSL) SSL() *libssl.SSL {
+	return s.ssl
 }
 
 // FD returns the socket file descriptor used by [SSL].
@@ -52,15 +65,15 @@ func (s *SSL) FD() int {
 // CloseFD will close the socket file descriptor used by [SSL].
 func (s *SSL) CloseFD() error {
 	if s.closed {
-		return s.closeErr
+		return s.closer.Err()
 	}
 	return s.bio.CloseFD()
 }
 
 // Read will read bytes into the buffer from the [SSL] connection.
 func (s *SSL) Read(b []byte) (int, error) {
-	if s.closeErr != nil {
-		return 0, s.closeErr
+	if s.closer.Err() != nil {
+		return 0, s.closer.Err()
 	}
 	var readBytes []byte
 	var numBytes int
@@ -92,7 +105,7 @@ func (s *SSL) RemoteAddr() net.Addr {
 // Write will write bytes from the buffer to the [SSL] connection.
 func (s *SSL) Write(b []byte) (int, error) {
 	if s.closed {
-		return 0, s.closeErr
+		return 0, s.closer.Err()
 	}
 	var numBytes int
 	if err := runWithLockedOSThread(func() error {
@@ -111,7 +124,7 @@ func (s *SSL) Write(b []byte) (int, error) {
 // Shutdown will send a close-notify alert to the peer to gracefully shutdown the [SSL] connection.
 func (s *SSL) Shutdown() error {
 	if s.closed {
-		return s.closeErr
+		return s.closer.Err()
 	}
 	return runWithLockedOSThread(func() error {
 		err := libssl.SSLShutdown(s.ssl)
@@ -137,9 +150,5 @@ func (s *SSL) GetShutdownState() int {
 
 // Close frees the [libssl.SSL] C object allocated by [SSL].
 func (s *SSL) Close() error {
-	s.closeOnce.Do(func() {
-		s.closeErr = libssl.SSLFree(s.ssl)
-		s.closed = true
-	})
-	return s.closeErr
+	return s.closer.Close()
 }

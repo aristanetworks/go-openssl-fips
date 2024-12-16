@@ -2,8 +2,8 @@ package ossl
 
 import (
 	"fmt"
+	"io"
 	"net"
-	"sync"
 	"syscall"
 
 	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
@@ -12,13 +12,12 @@ import (
 // BIO is the basic I/O abstraction used by [SSL] for reading from and writing to sockets.
 type BIO struct {
 	bio        *libssl.BIO
+	closer     io.Closer
 	hostname   string
 	port       string
 	sockfd     int
 	localAddr  net.Addr
 	remoteAddr net.Addr
-	closeOnce  sync.Once
-	closeErr   error
 }
 
 // NewBIO will create a new [libssl.BIO] connected to the host. It can be either blocking (mode=0)
@@ -27,7 +26,7 @@ func NewBIO(addr string, family, mode int) (b *BIO, err error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
-	b = &BIO{}
+	b = &BIO{closer: noopCloser{}}
 	b.hostname, b.port, err = net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -41,7 +40,20 @@ func NewBIO(addr string, family, mode int) (b *BIO, err error) {
 	if err := b.setAddrInfo(); err != nil {
 		return nil, err
 	}
+	b.closer = &onceCloser{
+		closeFunc: func() error {
+			return libssl.BIOFree(b.bio)
+		},
+	}
 	return b, nil
+}
+
+func (b *BIO) BIO() *libssl.BIO {
+	return b.bio
+}
+
+func (b *BIO) Hostname() string {
+	return b.hostname
 }
 
 // setAddrInfo will return the local and remote addresses of the [BIO] socket connection.
@@ -113,8 +125,5 @@ func (b *BIO) CloseFD() error {
 
 // Close frees the [libssl.BIO] object allocated by [BIO].
 func (b *BIO) Close() error {
-	b.closeOnce.Do(func() {
-		b.closeErr = libssl.BIOFree(b.bio)
-	})
-	return b.closeErr
+	return b.closer.Close()
 }

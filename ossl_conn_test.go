@@ -35,7 +35,10 @@ func TestSSLConn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := ossl.NewDialer(nil, ossl.WithCaFile(ts.CaFile), ossl.WithConnTraceEnabled())
+	d := ossl.NewDialer(ossl.NewDefaultTLSContext(
+		ossl.WithCaFile(ts.CaFile),
+		ossl.WithConnTrace(),
+	))
 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
@@ -73,7 +76,10 @@ func TestSSLConnReadDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := ossl.NewDialer(nil, ossl.WithCaFile(ts.CaFile), ossl.WithConnTraceEnabled())
+	d := ossl.NewDialer(ossl.NewDefaultTLSContext(
+		ossl.WithCaFile(ts.CaFile),
+		ossl.WithConnTrace(),
+	))
 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)

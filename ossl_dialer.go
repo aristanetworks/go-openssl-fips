@@ -2,7 +2,6 @@ package ossl
 
 import (
 	"context"
-	"io"
 	"net"
 	"syscall"
 	"time"
@@ -10,60 +9,24 @@ import (
 
 // Dialer is used for dialing [SSL] connections.
 type Dialer struct {
-	// Timeout is the maximum amount of time a dial will wait for
-	// a connect to complete. If Deadline is also set, it may fail
-	// earlier.
-	//
-	// The default is no timeout.
-	//
-	// When using TCP and dialing a host name with multiple IP
-	// addresses, the timeout may be divided between them.
-	//
-	// With or without a timeout, the operating system may impose
-	// its own earlier timeout. For instance, TCP timeouts are
-	// often around 3 minutes.
-	Timeout time.Duration
-
-	// Deadline is the absolute point in time after which dials
-	// will fail. If Timeout is set, it may fail earlier.
-	// Zero means no deadline, or dependent on the operating system
-	// as with the Timeout option.
-	Deadline time.Time
-
-	// Config is the dialing Config for [Conn].
-	Config *Config
-
 	// Ctx is the [SSLContext] that will be used for creating [SSL] connections. If this is nil, then
 	// [Dialer.Dial] will create a new [SSLContext] every invocation.
-	Ctx *SSLContext
+	Ctx *Context
 }
 
-// NewDialer returns the [SSL] dialer configured with [Config]. If [SSLContext] is nil, then
+// NewDialer returns the [SSL] dialer configured with [Config]. If [Context] is nil, then
 // [Dialer.DialContext] will create one that will be freed in [Conn.Close].
-func NewDialer(ctx *SSLContext, opts ...ConfigOption) *Dialer {
-	c := DefaultConfig()
-	for _, o := range opts {
-		o(c)
+func NewDialer(ctx *Context) (d *Dialer) {
+	if ctx == nil {
+		return nil
 	}
-	return &Dialer{
-		Ctx:     ctx,
-		Config:  c,
-		Timeout: c.Timeout,
-	}
-}
-
-// emptyCloser is a noop in the case where the caller provides the SSLContext
-type emptyCloser struct {
-}
-
-func (e emptyCloser) Close() error {
-	return nil
+	return &Dialer{Ctx: ctx}
 }
 
 // DialContext specifies a dial function for creating [SSL] connections.
 // The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	if err := Init(d.Config.LibsslVersion); err != nil {
+	if err := Init(d.Ctx.TLS.LibsslVersion); err != nil {
 		return nil, err
 	}
 	bio, err := d.dialBIO(ctx, network, addr)
@@ -123,32 +86,18 @@ func parseNetwork(network string) (int, error) {
 }
 
 func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
-	ctx, closeCtx, err := d.getSSLCtx()
+	ctx, err := d.Ctx.NewCtx()
 	if err != nil {
-		closeCtx.Close()
+		ctx.Close()
 		return nil, err
 	}
 	ssl, err := NewSSL(ctx, bio)
 	if err != nil {
 		ssl.Close()
-		closeCtx.Close()
+		ctx.Close()
 		return nil, err
 	}
-	return NewConn(ssl, closeCtx, d.Config.ConnTraceEnabled)
-}
-
-func (d *Dialer) getSSLCtx() (*SSLContext, io.Closer, error) {
-	// if no SSLContext is provided, create a new one that [Conn] will close
-	if d.Ctx == nil {
-		sslCtx, err := NewSSLContext(d.Config)
-		if err != nil {
-			return nil, sslCtx, err
-		}
-		return sslCtx, sslCtx, nil
-	}
-	// otherwise, we use the supplied sslCtx for creating [SSL] connections and provide an empty
-	// [io.Closer] to [Conn]
-	return d.Ctx, emptyCloser{}, nil
+	return NewConn(ssl, ctx, ctx.TLS.DialTraceEnabled)
 }
 
 // deadline returns the earliest of:
@@ -158,13 +107,13 @@ func (d *Dialer) getSSLCtx() (*SSLContext, io.Closer, error) {
 //
 // Or zero, if none of Timeout, Deadline, or context's deadline is set.
 func (d *Dialer) deadline(ctx context.Context, now time.Time) (earliest time.Time) {
-	if d.Timeout != 0 { // including negative, for historical reasons
-		earliest = now.Add(d.Timeout)
+	if d.Ctx.TLS.DialTimeout != 0 { // including negative, for historical reasons
+		earliest = now.Add(d.Ctx.TLS.DialTimeout)
 	}
 	if d, ok := ctx.Deadline(); ok {
 		earliest = minNonzeroTime(earliest, d)
 	}
-	return minNonzeroTime(earliest, d.Deadline)
+	return minNonzeroTime(earliest, d.Ctx.TLS.DialDeadline)
 }
 
 func minNonzeroTime(a, b time.Time) time.Time {
