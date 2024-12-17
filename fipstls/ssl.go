@@ -7,7 +7,7 @@ import (
 )
 
 // SSL represents a single SSL connection. It inherits configuration options
-// from [Context].
+// from [SSLContext].
 type SSL struct {
 	ssl    *libssl.SSL
 	bio    *BIO
@@ -15,9 +15,9 @@ type SSL struct {
 	closer Closer
 }
 
-// NewSSL creates an [SSL] object using [Context]. [SSL] is used for creating
+// NewSSL creates an [SSL] object using [SSLContext]. [SSL] is used for creating
 // a single TLS connection.
-func NewSSL(ctx *Context, bio *BIO) (s *SSL, err error) {
+func NewSSL(ctx *SSLContext, bio *BIO) (s *SSL, err error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}

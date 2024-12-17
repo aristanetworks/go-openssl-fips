@@ -117,7 +117,7 @@ func (c *Conn) opWithDeadline(b []byte, timer *atomic.Pointer[deadlineTimer],
 
 // NewConn wraps a new [SSL] connection to the host with deadlines, state-tracking, debug tracing,
 // and concurrency and memory safety. It will free [SSL] resources on connection closure, and
-// optionally [Context] resources if a cached context was provided.
+// optionally [SSLContext] resources if an ephemeral context was provided.
 func NewConn(ssl *SSL, ctx io.Closer, trace bool) (*Conn, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
@@ -190,7 +190,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 }
 
 // Close will attempt to cleanly shutdown the [SSL] connection and free [SSL] and optionally
-// [Context] resources if a non-empty context was provided.
+// [SSLContext] resources if a non-empty context was provided.
 func (c *Conn) Close() error {
 	c.trace("Close begin")
 	defer c.trace("Close end")

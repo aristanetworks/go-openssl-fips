@@ -27,44 +27,44 @@ func Init(version string) error {
 	return nil
 }
 
-// Context wraps the [libssl.SSLCtx] and stores [Config] options used to create
+// SSLContext wraps the [libssl.SSLCtx] and stores [Config] options used to create
 // [SSL] connections.
-type Context struct {
-	ctx    *libssl.SSLCtx
-	closer Closer
-	cached bool
-	TLS    *Config
+type SSLContext struct {
+	ctx       *libssl.SSLCtx
+	closer    Closer
+	reuseable bool
+	TLS       *Config
 }
 
-// NewCtx returns the default context that will be used to intiialize new derived
-// contexts.
-func NewCtx(opts ...ConfigOption) *Context {
-	return &Context{
+// NewCtx configures the [SSLContext] so it can be used to create a new context for every [SSL]
+// connection.
+func NewCtx(opts ...ConfigOption) *SSLContext {
+	return &SSLContext{
 		closer: noopCloser{},
 		TLS:    NewConfig(opts...),
 	}
 }
 
-// NewCachedCtx creates a new [Context] that will be reused in creating [SSL] connections.
+// NewReusableCtx creates a new [SSLContext] that will be reused in creating [SSL] connections.
 //
-// The caller is responsible for freeing the C memory allocated by the [Context] by calling
-// [Context.Close].
+// The caller is responsible for freeing the C memory allocated by the [SSLContext] by calling
+// [SSLContext.Close].
 //
-// Any context derived from a cached context will reference the underlying [libssl.SSLCtx] for
+// Any context derived from the context will reference the underlying [libssl.SSLCtx] for
 // creating [SSL] connections, but will be unable to free the allocated C memory.
-func NewCachedCtx(opts ...ConfigOption) (ctx *Context, err error) {
+func NewReusableCtx(opts ...ConfigOption) (ctx *SSLContext, err error) {
 	ctx = NewCtx(opts...)
-	ctx.cached = true
-	if !ctx.cached {
+	ctx.reuseable = true
+	if !ctx.reuseable {
 		return ctx, nil
 	}
-	if err = ctx.makeCloseable(ctx); err != nil {
+	if err = ctx.newCloseable(ctx); err != nil {
 		return nil, err
 	}
 	return ctx, nil
 }
 
-func (c *Context) new() (ctx *libssl.SSLCtx, err error) {
+func (c *SSLContext) new() (ctx *libssl.SSLCtx, err error) {
 	if err = Init(c.TLS.LibsslVersion); err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func newSslCtx(m Method) (*libssl.SSLCtx, error) {
 }
 
 // apply applies the security options to an SSL context
-func (c *Context) apply(ctx *libssl.SSLCtx) error {
+func (c *SSLContext) apply(ctx *libssl.SSLCtx) error {
 	var options int64
 
 	// Apply feature-specific options
@@ -144,13 +144,13 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	libssl.SSLCtxSetVerify(ctx, verifyMode, libssl.SSLVerifyCallback{})
 
 	// Set protocol versions
-	if c.TLS.MinVersion != 0 {
-		if err := libssl.SSLCtxSetMinProtoVersion(ctx, c.TLS.MinVersion); err != nil {
+	if c.TLS.MinTLSVersion != 0 {
+		if err := libssl.SSLCtxSetMinProtoVersion(ctx, c.TLS.MinTLSVersion); err != nil {
 			return fmt.Errorf("failed to set minimum protocol version: %w", err)
 		}
 	}
-	if c.TLS.MaxVersion != 0 {
-		if err := libssl.SSLCtxSetMaxProtoVersion(ctx, c.TLS.MaxVersion); err != nil {
+	if c.TLS.MaxTLSVersion != 0 {
+		if err := libssl.SSLCtxSetMaxProtoVersion(ctx, c.TLS.MaxTLSVersion); err != nil {
 			return fmt.Errorf("failed to set maximum protocol version: %w", err)
 		}
 	}
@@ -170,17 +170,17 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 }
 
 // Ctx returns a pointer to the underlying [libssl.SSLCtx] C object.
-func (c *Context) Ctx() *libssl.SSLCtx {
+func (c *SSLContext) Ctx() *libssl.SSLCtx {
 	return c.ctx
 }
 
-// Close frees the [libssl.SSLCtx] C object allocated by [Context].
-func (c *Context) Close() error {
+// Close frees the [libssl.SSLCtx] C object allocated by [SSLContext].
+func (c *SSLContext) Close() error {
 	return c.closer.Close()
 }
 
-// makeCloseable will create a new [libssl.SSLCtx] and add a closer to free it.
-func (c *Context) makeCloseable(cc *Context) (err error) {
+// newCloseable will create a new [libssl.SSLCtx] and add a closer to free it.
+func (c *SSLContext) newCloseable(cc *SSLContext) (err error) {
 	cc.ctx, err = c.new()
 	if err != nil {
 		return err
@@ -193,12 +193,12 @@ func (c *Context) makeCloseable(cc *Context) (err error) {
 	return nil
 }
 
-// New returns a new Context derived from this [Context]. It either references
+// New returns a new Context derived from this [SSLContext]. It either references
 // the [libssl.SSLCtx] or creates a new one from the [Config].
-func (c *Context) New() (ctx *Context, err error) {
-	ctx = &Context{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
-	if !c.cached {
-		if err = c.makeCloseable(ctx); err != nil {
+func (c *SSLContext) New() (ctx *SSLContext, err error) {
+	ctx = &SSLContext{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
+	if !c.reuseable {
+		if err = c.newCloseable(ctx); err != nil {
 			return nil, err
 		}
 	}

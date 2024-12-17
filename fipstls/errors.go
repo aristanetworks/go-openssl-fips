@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	ErrNoLibSslInit     = errors.New("ossl: libssl was not initialized with fipstls.Init")
-	ErrLoadLibSslFailed = errors.New("ossl: libssl failed to load")
-	ErrShutdown         = errors.New("ossl: protocol is shutdown")
+	ErrNoLibSslInit     = errors.New("fipstls: libssl was not initialized with fipstls.Init")
+	ErrLoadLibSslFailed = errors.New("fipstls: libssl failed to load")
+	ErrShutdown         = errors.New("fipstls: protocol is shutdown")
 )
 
 // newConnError converts SSL errors to appropriate net.OpError with syscall errors

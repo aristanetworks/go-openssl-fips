@@ -2,7 +2,6 @@ package fipstls
 
 import (
 	"path/filepath"
-	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
@@ -75,11 +74,11 @@ type Config struct {
 	// CaPath is the path to a directory containing CA certificates in PEM format.
 	CaPath string
 
-	// MinVersion is the minimum TLS version to accept.
-	MinVersion int64
+	// MinTLSVersion is the minimum TLS version to accept.
+	MinTLSVersion int64
 
-	// MaxVersion is the maximum TLS version to use.
-	MaxVersion int64
+	// MaxTLSVersion is the maximum TLS version to use.
+	MaxTLSVersion int64
 
 	// TLSMethod is the TLS method to use.
 	Method Method
@@ -101,36 +100,13 @@ type Config struct {
 
 	// RenegotiationDisabled disables all renegotiation.
 	RenegotiationDisabled bool
-
-	// DialTimeout is the maximum amount of time a dial will wait for
-	// a connect to complete. If Deadline is also set, it may fail
-	// earlier.
-	//
-	// The default is no timeout.
-	//
-	// When using TCP and dialing a host name with multiple IP
-	// addresses, the timeout may be divided between them.
-	//
-	// With or without a timeout, the operating system may impose
-	// its own earlier timeout. For instance, TCP timeouts are
-	// often around 3 minutes.
-	DialTimeout time.Duration
-
-	// DialDeadline is the absolute point in time after which dials
-	// will fail. If Timeout is set, it may fail earlier.
-	// Zero means no deadline, or dependent on the operating system
-	// as with the Timeout option.
-	DialDeadline time.Time
-
-	// TraceEnabled enables debug tracing in the [Conn].
-	TraceEnabled bool
 }
 
 // DefaultConfig returns a [Config] with sane default options. The default context is uninitialized.
 func NewDefaultConfig() *Config {
 	return &Config{
 		Method:            ClientMethod,
-		MinVersion:        Version13,
+		MinTLSVersion:     Version12,
 		VerifyMode:        VerifyPeer,
 		CertificateChecks: X509CheckTimeValidity,
 	}
@@ -163,17 +139,17 @@ func WithCaFile(path string) ConfigOption {
 	}
 }
 
-// WithMinVersion sets the minimum TLS version to accept.
-func WithMinVersion(version int64) ConfigOption {
+// WithMinTLSVersion sets the minimum TLS version to accept.
+func WithMinTLSVersion(version int64) ConfigOption {
 	return func(cfg *Config) {
-		cfg.MinVersion = version
+		cfg.MinTLSVersion = version
 	}
 }
 
-// WithMaxVersion sets the maximum TLS version to use.
-func WithMaxVersion(version int64) ConfigOption {
+// WithMaxTLSVersion sets the maximum TLS version to use.
+func WithMaxTLSVersion(version int64) ConfigOption {
 	return func(cfg *Config) {
-		cfg.MaxVersion = version
+		cfg.MaxTLSVersion = version
 	}
 }
 
@@ -223,26 +199,5 @@ func WithCompressionDisabled() ConfigOption {
 func WithRenegotiationDisabled() ConfigOption {
 	return func(cfg *Config) {
 		cfg.RenegotiationDisabled = true
-	}
-}
-
-// WithDialTimeout is the timeout used for the [Dialer].
-func WithDialTimeout(t time.Duration) ConfigOption {
-	return func(d *Config) {
-		d.DialTimeout = t
-	}
-}
-
-// WithDialTimeout is the deadline used for the [Dialer].
-func WithDialDeadline(t time.Time) ConfigOption {
-	return func(d *Config) {
-		d.DialDeadline = t
-	}
-}
-
-// WithConnTrace enables [Conn] trace logging to stdout.
-func WithConnTrace() ConfigOption {
-	return func(d *Config) {
-		d.TraceEnabled = true
 	}
 }

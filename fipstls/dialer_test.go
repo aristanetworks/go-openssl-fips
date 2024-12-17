@@ -29,10 +29,10 @@ func TestDialConn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &fipstls.Dialer{Ctx: fipstls.NewCtx(
-		fipstls.WithCaFile(ts.CaFile),
-		fipstls.WithConnTrace(),
-	)}
+	d := fipstls.NewDialer(
+		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
+		fipstls.WithConnTracingEnabled(),
+	)
 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
@@ -70,10 +70,10 @@ func TestDialDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &fipstls.Dialer{Ctx: fipstls.NewCtx(
-		fipstls.WithCaFile(ts.CaFile),
-		fipstls.WithConnTrace(),
-	)}
+	d := fipstls.NewDialer(
+		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
+		fipstls.WithConnTracingEnabled(),
+	)
 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)

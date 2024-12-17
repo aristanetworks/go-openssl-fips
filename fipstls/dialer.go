@@ -9,8 +9,65 @@ import (
 
 // Dialer is used for dialing [SSL] connections.
 type Dialer struct {
-	// Ctx is the [Context] that will be used for creating [SSL] connections.
-	Ctx *Context
+	// Ctx is the [SSLContext] that will be used for creating [SSL] connections.
+	Ctx *SSLContext
+
+	// Timeout is the maximum amount of time a dial will wait for
+	// a connect to complete. If Deadline is also set, it may fail
+	// earlier.
+	//
+	// The default is no timeout.
+	//
+	// When using TCP and dialing a host name with multiple IP
+	// addresses, the timeout may be divided between them.
+	//
+	// With or without a timeout, the operating system may impose
+	// its own earlier timeout. For instance, TCP timeouts are
+	// often around 3 minutes.
+	Timeout time.Duration
+
+	// Deadline is the absolute point in time after which dials
+	// will fail. If Timeout is set, it may fail earlier.
+	// Zero means no deadline, or dependent on the operating system
+	// as with the Timeout option.
+	Deadline time.Time
+
+	// ConnTraceEnabled enables debug tracing in the [Conn].
+	ConnTraceEnabled bool
+}
+
+type DialerOption func(*Dialer)
+
+// WithDialTimeout sets the timeout for the dialer.
+func WithDialTimeout(timeout time.Duration) DialerOption {
+	return func(d *Dialer) {
+		d.Timeout = timeout
+	}
+}
+
+// WithDialDeadline sets the deadline for the dialer.
+func WithDialDeadline(deadline time.Time) DialerOption {
+	return func(d *Dialer) {
+		d.Deadline = deadline
+	}
+}
+
+// WithConnTracingEnabled enables tracing for the dialer.
+func WithConnTracingEnabled() DialerOption {
+	return func(d *Dialer) {
+		d.ConnTraceEnabled = true
+	}
+}
+
+func NewDialer(ctx *SSLContext, opts ...DialerOption) *Dialer {
+	if ctx == nil {
+		panic("fipstls: SSLContext is nil")
+	}
+	d := &Dialer{Ctx: ctx}
+	for _, o := range opts {
+		o(d)
+	}
+	return d
 }
 
 // DialContext specifies a dial function for creating [SSL] connections.
@@ -103,7 +160,7 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		ctx.Close()
 		return nil, err
 	}
-	return NewConn(ssl, ctx.closer, ctx.TLS.TraceEnabled)
+	return NewConn(ssl, ctx.closer, d.ConnTraceEnabled)
 }
 
 // deadline returns the earliest of:
@@ -113,13 +170,13 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 //
 // Or zero, if none of Timeout, Deadline, or context's deadline is set.
 func (d *Dialer) deadline(ctx context.Context, now time.Time) (earliest time.Time) {
-	if d.Ctx.TLS.DialTimeout != 0 { // including negative, for historical reasons
-		earliest = now.Add(d.Ctx.TLS.DialTimeout)
+	if d.Timeout != 0 { // including negative, for historical reasons
+		earliest = now.Add(d.Timeout)
 	}
 	if d, ok := ctx.Deadline(); ok {
 		earliest = minNonzeroTime(earliest, d)
 	}
-	return minNonzeroTime(earliest, d.Ctx.TLS.DialDeadline)
+	return minNonzeroTime(earliest, d.Deadline)
 }
 
 func minNonzeroTime(a, b time.Time) time.Time {

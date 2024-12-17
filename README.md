@@ -51,23 +51,15 @@ This feature does not require any additional configuration, but it only works wi
 - Only Unix, Unix-like and Windows platforms are supported.
 - The build must set `CGO_ENABLED=1`.
 
-## http.Client Examples
+## Examples
 
-``` go
-// NewDefaultClient returns an [http.Client] with a [Transport]. The context
-// is not cached and will be re-created every RoundTrip.
-//
-// The caller does not need to worry about explictly freeing C memory allocated
-// by the [Context].
-func NewDefaultClient(opts ...TLSOption) *http.Client
+The `fipstls.SSLContext` must be configured before the client or dialer can be used. The `fipstls.SSLContext` is responsible for initializing libssl and TLS configuration that will be used to create `fipstls.SSL` connections.
 
-// NewClientWithCachedCtx returns an [http.Client] with [Transport] initialized by
-// a context that will be reused across [SSL] dials by the [Dialer].
-//
-// It is the caller's responsibility to close the context with [Context.Close].
-// Closing the context will free the C memory allocated by it.
-func NewClientWithCachedCtx(opts ...TLSOption) (*http.Client, *Context, error)
-```
+There are two options initializing the `fipstls.SSLContext`:
+- [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `libssl.SSLCtx` C object. Instead, the `fipstls.Dialer` will create and cleanup the `libssl.SSLCtx` every new `fipstls.SSL` connection.
+- [`fipstls.NewReusableCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewReusableCtx) - this will both initialize and create the underlying `libssl.SSLCtx` C object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
+
+Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in in the SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated by it.
 
 ### 1. Creating a Default Client
 
@@ -83,10 +75,10 @@ import (
 
 func main() {
 	// Create a default client with TLS configured for TLS 1.3
-	client := fipstls.NewDefaultClient(
+	sslCtx := fipstls.NewCtx(
 		fipstls.WithCaFile("/path/to/cert.pem"),
-		fipstls.WithMinVersion(fipstls.Version13),
-	)
+		fipstls.WithMinTLSVersion(fipstls.Version13))
+	client := fiptls.NewClient(sslCtx)
 
 	// Use the client to make HTTPS requests
 	resp, err := client.Get("https://example.com")
@@ -100,9 +92,9 @@ func main() {
 }
 ```
 
-### 2. Creating a Client with a Cached Context
+### 2. Creating a Client with a Reusable Context
 
-This example demonstrates how to create an `http.Client` with a cached `fipstls.Context`. This allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
+This example demonstrates how to create an `http.Client` with a reuseable `fipstls.SSLContext` using `NewReusableCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
 
 ```go
 import (
@@ -113,14 +105,15 @@ import (
 )
 
 func main() {
-	// Create a client with an cached Context
-	client, ctx, err := fipstls.NewClientWithCachedCtx()
+	// Create a client with an reusable Context
+	ctx, err := fipstls.NewReusableCtx()
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 	defer ctx.Close() // Close the Context when done
 
+	client := fipstls.NewClient(ctx)
 	// Use the client to make HTTPS requests
 	_, err = client.Get("https://example.com")
 	// ...
@@ -130,32 +123,9 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewClientWithCachedCtx`, it's the caller's responsibility to close the `Context` using `ctx.Close()` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewClientWithCachedCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
 
-
-## fipstls.Dialer Examples
-
-``` go
-// NewCtx returns the default context that will be used to intiialize new derived
-// contexts.
-func NewCtx(opts ...TLSOption) *Context
-
-// NewCachedCtx creates a new [Context] that will be reused in creating [SSL] connections.
-//
-// The caller is responsible for freeing the C memory allocated by the [Context] by calling
-// [Context.Close].
-//
-// Any context derived from a cached context will reference the underlying [libssl.SSLCtx] for
-// creating [SSL] connections, but will be unable to free the allocated C memory.
-func NewCachedCtx(opts ...TLSOption) (ctx *Context, err error)
-
-// NewContextDialer returns a dialer function for grpc to create [SSL] connections.
-// The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
-func (d *Dialer) NewContextDialer(ctx context.Context, network, addr string) func(context.Context, string) (net.Conn, error)
-```
-
-
-### 1. Creating a Default Dialer
+### 3. Creating a Default Dialer
 
 This example demonstrates how to create a default `Dialer` with default options using `NewCtx`. The underlying `libssl.SSLCtx` is managed by the `Dialer`.
 
@@ -172,8 +142,8 @@ import (
 )
 
 func main() {
-	// Create an fipstls.Dialer with the custom context
-	fipsdialer := &fipstls.Dialer{Ctx: fipstls.NewCtx(fipstls.WithCaFile("/path/to/cert.pem"))}
+	// Create an fipstls.Dialer with the configured context
+	fipsdialer := fipstls.NewDialer(fipstls.NewCtx(fipstls.WithCaFile("/path/to/cert.pem")))
 
 	// Use grpc.WithContextDialer to create a gRPC connection that will create
 	// a new Context every dial
@@ -193,10 +163,9 @@ func main() {
 }
 ```
 
-### 2. Creating a Dialer with a Cached Context
+### 4. Creating a Dialer with a Reusable Context
 
-This example demonstrates how to create a `Dialer` with a cached `fipstls.Context` using `NewCachedCtx`. This allows the `libssl.SSLCtx` to be reused for creating `SSL` connections in the dial function.
-
+This example demonstrates how to create a `Dialer` with a reusable `fipstls.SSLContext` using `NewReusableCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
 ``` go
 package main
 
@@ -204,20 +173,21 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	// Create an fipstls.Dialer with a cached context
-	ctx, err := fipstls.NewCachedCtx(fipstls.WithCaFile("/path/to/cert.pem"))
+	// Create an fipstls.Dialer with a reusable context
+	ctx, err := fipstls.NewReusableCtx(fipstls.WithCaFile("/path/to/cert.pem"))
 	if err != nil {
 		log.Fatalf("Failed to create context: %v", err)
 	}
 	// this will free the C memory allocated by the context
 	defer ctx.Close()
-	fipsdialer := &fipstls.Dialer{Ctx: ctx}
+	fipsdialer := NewDialer(ctx, fipstls.WithDialTimeout(10 * time.Second))
 
 	// Use grpc.WithContextDialer to create a gRPC connection that will reuse
 	// the context to to create SSL connections.
@@ -236,7 +206,7 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewCachedCtx`, it's the caller's responsibility to close the `Context` using `ctx.Close()` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewReusableCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
 
 ## Benchmarks
 
