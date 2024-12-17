@@ -1,11 +1,11 @@
-package ossl
+package fipstls
 
 import (
 	"fmt"
 	"net"
 	"syscall"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 // BIO is the basic I/O abstraction used by [SSL] for reading from and writing to sockets.

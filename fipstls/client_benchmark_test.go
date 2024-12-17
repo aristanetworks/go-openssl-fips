@@ -1,4 +1,4 @@
-package ossl_test
+package fipstls_test
 
 import (
 	"bytes"
@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl"
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
+	"github.com/aristanetworks/go-openssl-fips/fipstls"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
 const URL = "https://httpbingo.org/"
@@ -22,7 +22,7 @@ var (
 
 func BenchmarkClientSSL(b *testing.B) {
 	defer testutils.LeakCheckLSAN(b)
-	osslClient := ossl.NewDefaultClient()
+	osslClient := fipstls.NewDefaultClient()
 	b.ResetTimer()
 
 	b.Run("Custom OSSL Client GET", func(b *testing.B) {
@@ -86,7 +86,7 @@ func BenchmarkClientSSL(b *testing.B) {
 
 func BenchmarkClientCachedSSL(b *testing.B) {
 	defer testutils.LeakCheckLSAN(b)
-	osslClient, ctx, err := ossl.NewClientWithCachedCtx()
+	osslClient, ctx, err := fipstls.NewClientWithCachedCtx()
 	if err != nil {
 		b.Fatal(err)
 	}

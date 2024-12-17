@@ -1,4 +1,4 @@
-package ossl_test
+package fipstls_test
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl"
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
+	"github.com/aristanetworks/go-openssl-fips/fipstls"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
 func TestTransportConcurrency(t *testing.T) {
@@ -20,7 +20,7 @@ func TestTransportConcurrency(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("SSL Transport", func(t *testing.T) {
-		client := ossl.NewDefaultClient(ossl.WithCaFile(ts.CaFile), ossl.WithConnTrace())
+		client := fipstls.NewDefaultClient(fipstls.WithCaFile(ts.CaFile), fipstls.WithConnTrace())
 		createRequests(t, ts, client)
 	})
 

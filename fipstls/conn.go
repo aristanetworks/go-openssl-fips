@@ -1,4 +1,4 @@
-package ossl
+package fipstls
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 // Conn is used for writing to and reading from an [SSL] connection. It wraps the connection with

@@ -1,10 +1,10 @@
-package ossl_test
+package fipstls_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls"
 )
 
 func TestInitFailure(t *testing.T) {
@@ -32,8 +32,8 @@ func TestInitFailure(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ossl.Init(tc.version)
-			if tc.expErr && !errors.Is(err, ossl.ErrLoadLibSslFailed) {
+			err := fipstls.Init(tc.version)
+			if tc.expErr && !errors.Is(err, fipstls.ErrLoadLibSslFailed) {
 				t.Fatal("expected err, got nil")
 			}
 		})

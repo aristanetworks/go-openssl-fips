@@ -1,20 +1,20 @@
-package ossl
+package fipstls
 
 import (
 	"path/filepath"
 	"time"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 // TLS version constants.
-type TLSVersion int
+type Version int
 
 const (
-	TLSv1  = libssl.TLS1_VERSION
-	TLSv11 = libssl.TLS1_1_VERSION
-	TLSv12 = libssl.TLS1_2_VERSION
-	TLSv13 = libssl.TLS1_3_VERSION
+	Version1  = libssl.TLS1_VERSION
+	Version11 = libssl.TLS1_1_VERSION
+	Version12 = libssl.TLS1_2_VERSION
+	Version13 = libssl.TLS1_3_VERSION
 )
 
 // Method represents TLS method modes.
@@ -65,7 +65,7 @@ const (
 	X509TrustedFirst
 )
 
-type TLSConfig struct {
+type Config struct {
 	// LibsslVersion is the libssl version to dynamically load.
 	LibsslVersion string
 
@@ -126,22 +126,22 @@ type TLSConfig struct {
 	TraceEnabled bool
 }
 
-// DefaultConfig returns a [TLSConfig] with sane default options. The default context is uninitialized.
-func NewDefaultTLS() *TLSConfig {
-	return &TLSConfig{
+// DefaultConfig returns a [Config] with sane default options. The default context is uninitialized.
+func NewDefaultConfig() *Config {
+	return &Config{
 		Method:            ClientMethod,
-		MinVersion:        TLSv12,
+		MinVersion:        Version13,
 		VerifyMode:        VerifyPeer,
 		CertificateChecks: X509CheckTimeValidity,
 	}
 }
 
-// TLSOption is a functional option for configuring [TLSConfig].
-type TLSOption func(*TLSConfig)
+// ConfigOption is a functional option for configuring [Config].
+type ConfigOption func(*Config)
 
-// NewTLS creates a new [TLSConfig] with the given options.
-func NewTLS(opts ...TLSOption) *TLSConfig {
-	cfg := NewDefaultTLS()
+// NewConfig creates a new [Config] with the given options.
+func NewConfig(opts ...ConfigOption) *Config {
+	cfg := NewDefaultConfig()
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -149,100 +149,100 @@ func NewTLS(opts ...TLSOption) *TLSConfig {
 }
 
 // WithLibsslVersion sets the libssl version to dynamically load.
-func WithLibsslVersion(version string) TLSOption {
-	return func(cfg *TLSConfig) {
+func WithLibsslVersion(version string) ConfigOption {
+	return func(cfg *Config) {
 		cfg.LibsslVersion = version
 	}
 }
 
 // WithCaFile sets the path to a file of CA certificates in PEM format.
-func WithCaFile(path string) TLSOption {
-	return func(cfg *TLSConfig) {
+func WithCaFile(path string) ConfigOption {
+	return func(cfg *Config) {
 		cfg.CaPath = filepath.Dir(path)
 		cfg.CaFile = path
 	}
 }
 
 // WithMinVersion sets the minimum TLS version to accept.
-func WithMinVersion(version int64) TLSOption {
-	return func(cfg *TLSConfig) {
+func WithMinVersion(version int64) ConfigOption {
+	return func(cfg *Config) {
 		cfg.MinVersion = version
 	}
 }
 
 // WithMaxVersion sets the maximum TLS version to use.
-func WithMaxVersion(version int64) TLSOption {
-	return func(cfg *TLSConfig) {
+func WithMaxVersion(version int64) ConfigOption {
+	return func(cfg *Config) {
 		cfg.MaxVersion = version
 	}
 }
 
 // WithMethod sets the TLS method to use.
-func WithMethod(method Method) TLSOption {
-	return func(cfg *TLSConfig) {
+func WithMethod(method Method) ConfigOption {
+	return func(cfg *Config) {
 		cfg.Method = method
 	}
 }
 
 // WithVerifyMode sets the certificate verification mode.
-func WithVerifyMode(mode VerifyMode) TLSOption {
-	return func(cfg *TLSConfig) {
+func WithVerifyMode(mode VerifyMode) ConfigOption {
+	return func(cfg *Config) {
 		cfg.VerifyMode = mode
 	}
 }
 
 // WithCertificateChecks sets the certificate verification flags.
-func WithCertificateChecks(flags X509VerifyFlags) TLSOption {
-	return func(cfg *TLSConfig) {
+func WithCertificateChecks(flags X509VerifyFlags) ConfigOption {
+	return func(cfg *Config) {
 		cfg.CertificateChecks = flags
 	}
 }
 
 // WithSessionTicketsDisabled disables session ticket support.
-func WithSessionTicketsDisabled() TLSOption {
-	return func(cfg *TLSConfig) {
+func WithSessionTicketsDisabled() ConfigOption {
+	return func(cfg *Config) {
 		cfg.SessionTicketsDisabled = true
 	}
 }
 
 // WithSessionCacheDisabled disables session caching.
-func WithSessionCacheDisabled() TLSOption {
-	return func(cfg *TLSConfig) {
+func WithSessionCacheDisabled() ConfigOption {
+	return func(cfg *Config) {
 		cfg.SessionCacheDisabled = true
 	}
 }
 
 // WithCompressionDisabled disables compression.
-func WithCompressionDisabled() TLSOption {
-	return func(cfg *TLSConfig) {
+func WithCompressionDisabled() ConfigOption {
+	return func(cfg *Config) {
 		cfg.CompressionDisabled = true
 	}
 }
 
 // WithRenegotiationDisabled disables all renegotiation.
-func WithRenegotiationDisabled() TLSOption {
-	return func(cfg *TLSConfig) {
+func WithRenegotiationDisabled() ConfigOption {
+	return func(cfg *Config) {
 		cfg.RenegotiationDisabled = true
 	}
 }
 
 // WithDialTimeout is the timeout used for the [Dialer].
-func WithDialTimeout(t time.Duration) TLSOption {
-	return func(d *TLSConfig) {
+func WithDialTimeout(t time.Duration) ConfigOption {
+	return func(d *Config) {
 		d.DialTimeout = t
 	}
 }
 
 // WithDialTimeout is the deadline used for the [Dialer].
-func WithDialDeadline(t time.Time) TLSOption {
-	return func(d *TLSConfig) {
+func WithDialDeadline(t time.Time) ConfigOption {
+	return func(d *Config) {
 		d.DialDeadline = t
 	}
 }
 
 // WithConnTrace enables [Conn] trace logging to stdout.
-func WithConnTrace() TLSOption {
-	return func(d *TLSConfig) {
+func WithConnTrace() ConfigOption {
+	return func(d *Config) {
 		d.TraceEnabled = true
 	}
 }

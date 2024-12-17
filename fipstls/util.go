@@ -1,11 +1,11 @@
-package ossl
+package fipstls
 
 import (
 	"io"
 	"runtime"
 	"sync"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 // runWithLockedOSThread ensures the given function executes with the goroutine

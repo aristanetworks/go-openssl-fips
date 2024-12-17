@@ -1,4 +1,4 @@
-package ossl
+package fipstls
 
 import (
 	"context"

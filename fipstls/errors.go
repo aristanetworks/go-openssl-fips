@@ -1,4 +1,4 @@
-package ossl
+package fipstls
 
 import (
 	"errors"
@@ -6,11 +6,11 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 var (
-	ErrNoLibSslInit     = errors.New("ossl: libssl was not initialized with ossl.Init")
+	ErrNoLibSslInit     = errors.New("ossl: libssl was not initialized with fipstls.Init")
 	ErrLoadLibSslFailed = errors.New("ossl: libssl failed to load")
 	ErrShutdown         = errors.New("ossl: protocol is shutdown")
 )

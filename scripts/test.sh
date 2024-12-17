@@ -10,8 +10,8 @@ case "$1" in
     break
     ;;
 -b|--binary)
-    go test -tags netgo -race -c -o test-client ./ssl_client_test.go
-    go test -tags netgo -race -c -o test-conn ./ssl_conn_test.go
+    go test -tags netgo -race -c -o test-client ./fipstls/client_test.go
+    go test -tags netgo -race -c -o test-conn ./fipstls/conn_test.go
 
     ./test-conn -test.v -test.count 10
     ./test-client -test.v -test.count 10
@@ -19,8 +19,8 @@ case "$1" in
     ;;
 -t|--trace)
     mkdir -p ./test/trace
-    go test -tags netgo -race -c -o test-client ./ssl_client_test.go
-    go test -tags netgo -race -c -o test-conn ./ssl_conn_test.go
+    go test -tags netgo -race -c -o test-client ./fipstls/client_test.go
+    go test -tags netgo -race -c -o test-conn ./fipstls/conn_test.go
 
     ./test-conn -test.v -test.trace ./test/trace/test-conn-trace.out."$TAG.$TS" -test.count 10
     ./test-client -test.v -test.trace ./test/trace/test-client-trace.out."$TAG.$TS" -test.count 10

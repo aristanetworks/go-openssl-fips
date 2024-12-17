@@ -1,9 +1,9 @@
-package ossl
+package fipstls
 
 import (
 	"net"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 // SSL represents a single SSL connection. It inherits configuration options

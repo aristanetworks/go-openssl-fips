@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 type testLogger interface {

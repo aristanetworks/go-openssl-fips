@@ -1,10 +1,10 @@
-package ossl
+package fipstls
 
 import (
 	"errors"
 	"fmt"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/libssl"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 var (
@@ -27,21 +27,21 @@ func Init(version string) error {
 	return nil
 }
 
-// Context wraps the [libssl.SSLCtx] and stores [TLSConfig] options used to create
+// Context wraps the [libssl.SSLCtx] and stores [Config] options used to create
 // [SSL] connections.
 type Context struct {
 	ctx    *libssl.SSLCtx
 	closer Closer
 	cached bool
-	TLS    *TLSConfig
+	TLS    *Config
 }
 
 // NewCtx returns the default context that will be used to intiialize new derived
 // contexts.
-func NewCtx(opts ...TLSOption) *Context {
+func NewCtx(opts ...ConfigOption) *Context {
 	return &Context{
 		closer: noopCloser{},
-		TLS:    NewTLS(opts...),
+		TLS:    NewConfig(opts...),
 	}
 }
 
@@ -52,7 +52,7 @@ func NewCtx(opts ...TLSOption) *Context {
 //
 // Any context derived from a cached context will reference the underlying [libssl.SSLCtx] for
 // creating [SSL] connections, but will be unable to free the allocated C memory.
-func NewCachedCtx(opts ...TLSOption) (ctx *Context, err error) {
+func NewCachedCtx(opts ...ConfigOption) (ctx *Context, err error) {
 	ctx = NewCtx(opts...)
 	ctx.cached = true
 	if !ctx.cached {
@@ -194,7 +194,7 @@ func (c *Context) makeCloseable(cc *Context) (err error) {
 }
 
 // New returns a new Context derived from this [Context]. It either references
-// the [libssl.SSLCtx] or creates a new one from the [TLSConfig].
+// the [libssl.SSLCtx] or creates a new one from the [Config].
 func (c *Context) New() (ctx *Context, err error) {
 	ctx = &Context{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
 	if !c.cached {

@@ -1,4 +1,4 @@
-package ossl_test
+package fipstls_test
 
 import (
 	"bufio"
@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl"
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
+	"github.com/aristanetworks/go-openssl-fips/fipstls"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
-func TestSSLConn(t *testing.T) {
+func TestDialConn(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
@@ -29,9 +29,9 @@ func TestSSLConn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &ossl.Dialer{Ctx: ossl.NewCtx(
-		ossl.WithCaFile(ts.CaFile),
-		ossl.WithConnTrace(),
+	d := &fipstls.Dialer{Ctx: fipstls.NewCtx(
+		fipstls.WithCaFile(ts.CaFile),
+		fipstls.WithConnTrace(),
 	)}
 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
 	if err != nil {
@@ -57,7 +57,7 @@ func TestSSLConn(t *testing.T) {
 	fmt.Printf("Response: %s\n", string(response))
 }
 
-func TestSSLConnReadDeadline(t *testing.T) {
+func TestDialDeadline(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
@@ -70,9 +70,9 @@ func TestSSLConnReadDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &ossl.Dialer{Ctx: ossl.NewCtx(
-		ossl.WithCaFile(ts.CaFile),
-		ossl.WithConnTrace(),
+	d := &fipstls.Dialer{Ctx: fipstls.NewCtx(
+		fipstls.WithCaFile(ts.CaFile),
+		fipstls.WithConnTrace(),
 	)}
 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
 	if err != nil {

@@ -1,4 +1,4 @@
-package ossl_test
+package fipstls_test
 
 import (
 	"bytes"
@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aristanetworks/go-openssl-fips/ossl"
-	"github.com/aristanetworks/go-openssl-fips/ossl/internal/testutils"
+	"github.com/aristanetworks/go-openssl-fips/fipstls"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
 // TestSSLClientGet
@@ -25,7 +25,7 @@ func TestSSLClientGet(t *testing.T) {
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
-	client := ossl.NewDefaultClient(ossl.WithCaFile(ts.CaFile))
+	client := fipstls.NewDefaultClient(fipstls.WithCaFile(ts.CaFile))
 
 	trace := &httptrace.ClientTrace{
 		TLSHandshakeStart: func() {
@@ -96,7 +96,7 @@ func TestSSLClientPost(t *testing.T) {
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
-	client := ossl.NewDefaultClient(ossl.WithCaFile(ts.CaFile))
+	client := fipstls.NewDefaultClient(fipstls.WithCaFile(ts.CaFile))
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -143,7 +143,7 @@ func TestSSLClientPostTrace(t *testing.T) {
 	ts := testutils.NewTestServer(t)
 	defer ts.Close()
 
-	client := ossl.NewDefaultClient(ossl.WithCaFile(ts.CaFile), ossl.WithDialTimeout(10*time.Second))
+	client := fipstls.NewDefaultClient(fipstls.WithCaFile(ts.CaFile), fipstls.WithDialTimeout(10*time.Second))
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -188,7 +188,7 @@ func TestSSLClientPostTrace(t *testing.T) {
 func TestRoundTripSSL(t *testing.T) {
 	t.Skip("local testing only")
 	defer testutils.LeakCheckLSAN(t)
-	client := ossl.NewDefaultClient(ossl.WithDialTimeout(10 * time.Second))
+	client := fipstls.NewDefaultClient(fipstls.WithDialTimeout(10 * time.Second))
 
 	// Add HTTP trace for debugging
 	trace := &httptrace.ClientTrace{
@@ -259,7 +259,7 @@ type Progress struct {
 
 func TestStreamJSON(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	client := ossl.NewDefaultClient()
+	client := fipstls.NewDefaultClient()
 
 	tests := []struct {
 		name          string

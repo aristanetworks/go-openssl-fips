@@ -29,15 +29,15 @@ EOF
 
 FROM golang-1.23-centos AS test-noossl-fallback
 
-COPY . /go/src/go-openssl-fips
+COPY . /go/src/go-openssl
 
 # check we can fallback on libdl failures
 ENV CGO_ENABLED=1
-WORKDIR /go/src/go-openssl-fips
+WORKDIR /go/src/go-openssl
 RUN <<EOF
 set -e
 
-go test -tags netgo -c -o ssl-client-glibc-2.17 ./ssl_client_test.go
+go test -tags netgo -c -o ssl-client-glibc-2.17 ./fipstls/client_test.go
 ldd --version
 
 # should fail
@@ -57,11 +57,11 @@ rpm -ivh --force \
     https://vault.centos.org/7.9.2009/os/x86_64/Packages/openssl-libs-1.0.2k-19.el7.x86_64.rpm \
 EOF
 
-COPY . /go/src/go-openssl-fips
+COPY . /go/src/go-openssl
 
 # run unit tests and build test binary
 ENV CGO_ENABLED=1
-WORKDIR /go/src/go-openssl-fips
+WORKDIR /go/src/go-openssl
 RUN <<EOF
 set -e
 
@@ -75,9 +75,9 @@ EOF
 
 # test 2.17 binary on glibc 2.31
 FROM golang:1.23.2-bullseye AS test-ossl1.1.1-glibc2.31
-COPY --from=test-ossl1.0.2-glibc2.17 /go/src/go-openssl-fips /go/src/go-openssl-fips
+COPY --from=test-ossl1.0.2-glibc2.17 /go/src/go-openssl /go/src/go-openssl
 
-WORKDIR /go/src/go-openssl-fips
+WORKDIR /go/src/go-openssl
 RUN <<EOF
 set -e
 
@@ -89,9 +89,9 @@ EOF
 
 # test 2.17 binary on glibc 2.36
 FROM golang:1.23.2-bookworm AS test-ossl3-glibc2.36
-COPY --from=test-ossl1.0.2-glibc2.17 /go/src/go-openssl-fips /go/src/go-openssl-fips
+COPY --from=test-ossl1.0.2-glibc2.17 /go/src/go-openssl /go/src/go-openssl
 
-WORKDIR /go/src/go-openssl-fips
+WORKDIR /go/src/go-openssl
 RUN <<EOF
 set -e
 
