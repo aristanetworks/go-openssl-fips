@@ -1,3 +1,7 @@
+// The `fipstls“ package implements TLS client methods using OpenSSL shared libraries and cgo.
+// When configured correctly, OpenSSL can be executed in FIPS mode, making the `fipstls` package
+// FIPS compliant.
+
 package fipstls
 
 import (
