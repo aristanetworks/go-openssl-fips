@@ -123,7 +123,7 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewClientWithCachedCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewReusableCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
 
 ### 3. Creating a Default Dialer
 
