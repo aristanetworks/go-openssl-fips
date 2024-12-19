@@ -195,7 +195,7 @@ func main() {
 		context.Background(),
 		"your-grpc-server-address:port",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(fipsdialer.NewContextDialer),
+		grpc.WithContextDialer(fipsdialer.NewContextDialer("tcp4")),
 	)
 	if err != nil {
 		log.Fatalf("Failed to dial gRPC server: %v", err)
