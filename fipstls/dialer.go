@@ -86,7 +86,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 
 // NewContextDialer returns a dialer function for grpc to create [SSL] connections.
 // The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
-func (d *Dialer) NewContextDialer(ctx context.Context, network, addr string) func(context.Context, string) (net.Conn, error) {
+func (d *Dialer) NewContextDialer(network string) func(context.Context, string) (net.Conn, error) {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		if err := Init(d.Ctx.TLS.LibsslVersion); err != nil {
 			return nil, err
