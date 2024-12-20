@@ -56,8 +56,8 @@ This feature does not require any additional configuration, but it only works wi
 The `fipstls.SSLContext` must be configured before the client or dialer can be used. The `fipstls.SSLContext` is responsible for initializing libssl and TLS configuration that will be used to create `fipstls.SSL` connections.
 
 There are two options initializing the `fipstls.SSLContext`:
-- [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `libssl.SSLCtx` C object. Instead, the `fipstls.Dialer` will create and cleanup the `libssl.SSLCtx` every new `fipstls.SSL` connection.
-- [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `libssl.SSLCtx` C object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
+- [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `C.SSL_CTX` object. Instead, the `fipstls.Dialer` will create and cleanup the `C.SSL_CTX` every new `fipstls.SSL` connection.
+- [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `SSL_CTX` object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
 
 Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in in the SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated for it.
 
