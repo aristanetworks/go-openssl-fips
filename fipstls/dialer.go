@@ -61,9 +61,11 @@ func WithConnTracingEnabled() DialerOption {
 	}
 }
 
+// NewDialer is returns a [Dialer] configured with [DialerOption]. The
+// [SSLContext] should not be nil.
 func NewDialer(ctx *SSLContext, opts ...DialerOption) *Dialer {
 	if ctx == nil {
-		panic("fipstls: SSLContext is nil")
+		panic("cannot create Dialer from nil SSLContext")
 	}
 	d := &Dialer{Ctx: ctx}
 	for _, o := range opts {
@@ -91,6 +93,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 }
 
 // NewGrpcDialFn returns a dialer function for grpc to create [SSL] connections.
+// The [SSLContext] should not be nil.
 func NewGrpcDialFn(sslCtx *SSLContext, network string, opts ...DialerOption) func(context.Context,
 	string) (net.Conn, error) {
 	d := NewDialer(sslCtx, opts...)
