@@ -57,7 +57,7 @@ The `fipstls.SSLContext` must be configured before the client or dialer can be u
 
 There are two options initializing the `fipstls.SSLContext`:
 - [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `libssl.SSLCtx` C object. Instead, the `fipstls.Dialer` will create and cleanup the `libssl.SSLCtx` every new `fipstls.SSL` connection.
-- [`fipstls.NewReusableCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewReusableCtx) - this will both initialize and create the underlying `libssl.SSLCtx` C object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
+- [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `libssl.SSLCtx` C object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
 
 Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in in the SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated by it.
 
@@ -94,7 +94,7 @@ func main() {
 
 ### 2. Creating a Client with a Reusable Context
 
-This example demonstrates how to create an `http.Client` with a reuseable `fipstls.SSLContext` using `NewReusableCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
+This example demonstrates how to create an `http.Client` with a reuseable `fipstls.SSLContext` using `NewUnsafeCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
 
 ```go
 import (
@@ -105,8 +105,8 @@ import (
 )
 
 func main() {
-	// Create a client with an reusable Context
-	ctx, err := fipstls.NewReusableCtx()
+	// Create a client with an unsafe, reusable Context
+	ctx, err := fipstls.NewUnsafeCtx()
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
@@ -123,7 +123,7 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewReusableCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewUnsafeCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
 
 ### 3. Creating a Default Dialer
 
@@ -143,7 +143,9 @@ import (
 
 func main() {
 	// Create an fipstls.Dialer with the configured context
-	fipsdialer := fipstls.NewDialer(fipstls.NewCtx(fipstls.WithCaFile("/path/to/cert.pem")))
+	dialFn := fiptls.NewGrpcDialFn(
+		fipstls.NewCtx(fipstls.WithCaFile("/path/to/cert.pem")),
+		fipstls.WithTimeout(10 * time.Second))
 
 	// Use grpc.WithContextDialer to create a gRPC connection that will create
 	// a new Context every dial
@@ -151,7 +153,7 @@ func main() {
 		context.Background(),
 		"your-grpc-server-address:port",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(fipsdialer.NewContextDialer("tcp4")),
+		grpc.WithContextDialer(dialFn),
 	)
 	if err != nil {
 		log.Fatalf("Failed to dial gRPC server: %v", err)
@@ -165,7 +167,7 @@ func main() {
 
 ### 4. Creating a Dialer with a Reusable Context
 
-This example demonstrates how to create a `Dialer` with a reusable `fipstls.SSLContext` using `NewReusableCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
+This example demonstrates how to create a `Dialer` with a unsafe, reusable `fipstls.SSLContext` using `NewUnsafeCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
 ``` go
 package main
 
@@ -180,22 +182,22 @@ import (
 )
 
 func main() {
-	// Create an fipstls.Dialer with a reusable context
-	ctx, err := fipstls.NewReusableCtx(fipstls.WithCaFile("/path/to/cert.pem"))
+	// Create an fipstls.Dialer with an unsafe, reusable context
+	ctx, err := fipstls.NewUnsafeCtx(fipstls.WithCaFile("/path/to/cert.pem"))
 	if err != nil {
 		log.Fatalf("Failed to create context: %v", err)
 	}
 	// this will free the C memory allocated by the context
 	defer ctx.Close()
-	fipsdialer := NewDialer(ctx, fipstls.WithDialTimeout(10 * time.Second))
+	fipsDialFn := fiptls.NewGrpcDialFn(ctx, "tcp", fipstls.WithTimeout(10 * time.Second))
 
 	// Use grpc.WithContextDialer to create a gRPC connection that will reuse
-	// the context to to create SSL connections.
+	// the context to create SSL connections.
 	conn, err := grpc.DialContext(
 		context.Background(),
 		"your-grpc-server-address:port",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(fipsdialer.NewContextDialer("tcp4")),
+		grpc.WithContextDialer(fipsDialFn),
 	)
 	if err != nil {
 		log.Fatalf("Failed to dial gRPC server: %v", err)
@@ -206,7 +208,7 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewReusableCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewUnsafeCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
 
 ## Benchmarks
 

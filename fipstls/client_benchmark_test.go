@@ -86,7 +86,7 @@ func BenchmarkClientSSL(b *testing.B) {
 
 func BenchmarkClientCachedSSL(b *testing.B) {
 	defer testutils.LeakCheckLSAN(b)
-	ctx, err := fipstls.NewReusableCtx()
+	ctx, err := fipstls.NewUnsafeCtx()
 	if err != nil {
 		b.Fatal(err)
 	}

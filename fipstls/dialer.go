@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var DefaultNetwork = "tcp4"
+
 // Dialer is used for dialing [SSL] connections.
 type Dialer struct {
 	// Ctx is the [SSLContext] that will be used for creating [SSL] connections.
@@ -71,10 +73,14 @@ func NewDialer(ctx *SSLContext, opts ...DialerOption) *Dialer {
 }
 
 // DialContext specifies a dial function for creating [SSL] connections.
-// The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
+// The network must be one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or
+// "unix".
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	if err := Init(d.Ctx.TLS.LibsslVersion); err != nil {
 		return nil, err
+	}
+	if network == "" {
+		network = DefaultNetwork
 	}
 	bio, err := d.dialBIO(ctx, network, addr)
 	if err != nil {
@@ -84,11 +90,15 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 	return d.newConn(bio)
 }
 
-// NewContextDialer returns a dialer function for grpc to create [SSL] connections.
-// The network must be "tcp" (defaults to "tcp4"), "tcp4", "tcp6", or "unix".
-func (d *Dialer) NewContextDialer(network string) func(context.Context, string) (net.Conn, error) {
+// NewGrpcDialFn returns a dialer function for grpc to create [SSL] connections.
+func NewGrpcDialFn(sslCtx *SSLContext, network string, opts ...DialerOption) func(context.Context,
+	string) (net.Conn, error) {
+	d := NewDialer(sslCtx, opts...)
+	if network == "" {
+		network = DefaultNetwork
+	}
 	return func(ctx context.Context, addr string) (net.Conn, error) {
-		if err := Init(d.Ctx.TLS.LibsslVersion); err != nil {
+		if err := Init(sslCtx.TLS.LibsslVersion); err != nil {
 			return nil, err
 		}
 		bio, err := d.dialBIO(ctx, network, addr)

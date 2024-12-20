@@ -27,17 +27,21 @@ func Init(version string) error {
 	return nil
 }
 
-// SSLContext wraps the [libssl.SSLCtx] and stores [Config] options used to create
+// SSLContext wraps the C.SSL_CTX and stores [Config] options used to create
 // [SSL] connections.
 type SSLContext struct {
-	ctx       *libssl.SSLCtx
-	closer    Closer
-	reuseable bool
-	TLS       *Config
+	ctx    *libssl.SSLCtx
+	closer Closer
+	unsafe bool
+	TLS    *Config
 }
 
-// NewCtx configures the [SSLContext] so it can be used to create a new context for every [SSL]
-// connection.
+// NewCtx configures the [SSLContext] but will not allocate a C.SSL_CTX object.
+//
+// Calling [SSLContext.New] will create an SSLContext with a C.SSL_CTX allocated
+// using the [SSLContext.TLS] options.
+//
+// The C.SSL_CTX will be freed on [SSLContext.Close].
 func NewCtx(opts ...ConfigOption) *SSLContext {
 	return &SSLContext{
 		closer: noopCloser{},
@@ -45,17 +49,16 @@ func NewCtx(opts ...ConfigOption) *SSLContext {
 	}
 }
 
-// NewReusableCtx creates a new [SSLContext] that will be reused in creating [SSL] connections.
+// NewUnsafeCtx configures and allocates a C.SSL_CTX object that will be reused
+// in creating [SSL] connections. The caller is responsible for freeing the
+// C memory allocated by C.SSL_CTX with [SSLContext.Close].
 //
-// The caller is responsible for freeing the C memory allocated by the [SSLContext] by calling
-// [SSLContext.Close].
-//
-// Any context derived from the context will reference the underlying [libssl.SSLCtx] for
-// creating [SSL] connections, but will be unable to free the allocated C memory.
-func NewReusableCtx(opts ...ConfigOption) (ctx *SSLContext, err error) {
+// Calling [SSLContext.New] will create an SSLContext that references the
+// pointer receiver's C.SSL_CTX, but can't free it.
+func NewUnsafeCtx(opts ...ConfigOption) (ctx *SSLContext, err error) {
 	ctx = NewCtx(opts...)
-	ctx.reuseable = true
-	if !ctx.reuseable {
+	ctx.unsafe = true
+	if !ctx.unsafe {
 		return ctx, nil
 	}
 	if err = ctx.newCloseable(ctx); err != nil {
@@ -85,7 +88,7 @@ func (c *SSLContext) new() (ctx *libssl.SSLCtx, err error) {
 	return ctx, nil
 }
 
-// newSslCtx creates a new [libssl.SSLCtx] object from the TLS [Method].
+// newSslCtx creates a new C.SSL_CTX object from the TLS [Method].
 func newSslCtx(m Method) (*libssl.SSLCtx, error) {
 	var method *libssl.SSLMethod
 	var err error
@@ -169,17 +172,17 @@ func (c *SSLContext) apply(ctx *libssl.SSLCtx) error {
 	return nil
 }
 
-// Ctx returns a pointer to the underlying [libssl.SSLCtx] C object.
+// Ctx returns a pointer to the underlying C.SSL_CTX C object.
 func (c *SSLContext) Ctx() *libssl.SSLCtx {
 	return c.ctx
 }
 
-// Close frees the [libssl.SSLCtx] C object allocated by [SSLContext].
+// Close frees the C.SSL_CTX C object allocated by [SSLContext].
 func (c *SSLContext) Close() error {
 	return c.closer.Close()
 }
 
-// newCloseable will create a new [libssl.SSLCtx] and add a closer to free it.
+// newCloseable will create a new C.SSL_CTX and add a closer to free it.
 func (c *SSLContext) newCloseable(cc *SSLContext) (err error) {
 	cc.ctx, err = c.new()
 	if err != nil {
@@ -194,10 +197,11 @@ func (c *SSLContext) newCloseable(cc *SSLContext) (err error) {
 }
 
 // New returns a new Context derived from this [SSLContext]. It either references
-// the [libssl.SSLCtx] or creates a new one from the [Config].
+// the C.SSL_CTX or creates a new one from the [Config].
 func (c *SSLContext) New() (ctx *SSLContext, err error) {
 	ctx = &SSLContext{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
-	if !c.reuseable {
+	if !c.unsafe {
+		// [Conn.Close] will free the memory
 		if err = c.newCloseable(ctx); err != nil {
 			return nil, err
 		}
