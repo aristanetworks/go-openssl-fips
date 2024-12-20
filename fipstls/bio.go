@@ -124,7 +124,7 @@ func (b *BIO) CloseFD() error {
 	return syscall.Close(b.sockfd)
 }
 
-// Close frees the [libssl.BIO] object allocated by [BIO].
+// Close frees the [libssl.BIO] object allocated for [BIO].
 func (b *BIO) Close() error {
 	return b.closer.Close()
 }

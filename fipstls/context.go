@@ -51,7 +51,7 @@ func NewCtx(opts ...ConfigOption) *SSLContext {
 
 // NewUnsafeCtx configures and allocates a C.SSL_CTX object that will be reused
 // in creating [SSL] connections. The caller is responsible for freeing the
-// C memory allocated by C.SSL_CTX with [SSLContext.Close].
+// C memory allocated for C.SSL_CTX with [SSLContext.Close].
 //
 // Calling [SSLContext.New] will create an SSLContext that references the
 // pointer receiver's C.SSL_CTX, but can't free it.
@@ -177,7 +177,7 @@ func (c *SSLContext) Ctx() *libssl.SSLCtx {
 	return c.ctx
 }
 
-// Close frees the C.SSL_CTX C object allocated by [SSLContext].
+// Close frees the C.SSL_CTX C object allocated for [SSLContext].
 func (c *SSLContext) Close() error {
 	return c.closer.Close()
 }

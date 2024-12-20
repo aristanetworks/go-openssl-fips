@@ -150,7 +150,7 @@ func (s *SSL) GetShutdownState() int {
 	return state
 }
 
-// Close frees the [libssl.SSL] C object allocated by [SSL].
+// Close frees the [libssl.SSL] C object allocated for [SSL].
 func (s *SSL) Close() error {
 	return s.closer.Close()
 }

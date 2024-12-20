@@ -4,7 +4,7 @@
 //
 // If the supplied [SSLContext] was created with [NewCtx], then a new context will
 // be created every [Dialer.DialContext]. The caller does not need to worry about explictly
-// freeing C memory allocated by the [SSLContext].
+// freeing C memory allocated for the [SSLContext].
 //
 // If the supplied [SSLContext] was created with [NewUnsafeCtx], then it is
 // created once and and reused across [SSL] dials by the [Dialer]. It is the

@@ -59,7 +59,7 @@ There are two options initializing the `fipstls.SSLContext`:
 - [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `libssl.SSLCtx` C object. Instead, the `fipstls.Dialer` will create and cleanup the `libssl.SSLCtx` every new `fipstls.SSL` connection.
 - [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `libssl.SSLCtx` C object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
 
-Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in in the SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated by it.
+Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in in the SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated for it.
 
 ### 1. Creating a Default Client
 
@@ -158,7 +158,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to dial gRPC server: %v", err)
 	}
-	// this will free the C memory allocated by the context
+	// this will free the C memory allocated for the context
 	defer conn.Close()
 
 	// ... use the gRPC connection ...
@@ -187,7 +187,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create context: %v", err)
 	}
-	// this will free the C memory allocated by the context
+	// this will free the C memory allocated for the context
 	defer ctx.Close()
 	fipsDialFn := fiptls.NewGrpcDialFn(ctx, "tcp", fipstls.WithTimeout(10 * time.Second))
 
