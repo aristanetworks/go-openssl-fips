@@ -2,7 +2,6 @@ package fipstls
 
 import (
 	"io"
-	"runtime"
 	"sync"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
@@ -11,8 +10,8 @@ import (
 // runWithLockedOSThread ensures the given function executes with the goroutine
 // locked to an OS thread.
 func runWithLockedOSThread(fn func() error) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	// runtime.LockOSThread()
+	// defer runtime.UnlockOSThread()
 	libssl.SSLClearError()
 	return fn()
 }

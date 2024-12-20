@@ -133,7 +133,7 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 	}
 	ch := make(chan bioResult)
 	go func() {
-		b, err := NewBIO(addr, family, 0)
+		b, err := NewBIO(addr, family, 1)
 		ch <- bioResult{b, err}
 	}()
 
@@ -167,13 +167,12 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		ctx.Close()
 		return nil, err
 	}
-	ssl, err := NewSSL(ctx, bio)
+	conn, err := NewConn(ctx, bio, d.Deadline, d.ConnTraceEnabled)
 	if err != nil {
-		ssl.Close()
 		ctx.Close()
 		return nil, err
 	}
-	return NewConn(ssl, ctx.closer, d.ConnTraceEnabled)
+	return conn, nil
 }
 
 // deadline returns the earliest of:

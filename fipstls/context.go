@@ -71,18 +71,13 @@ func (c *SSLContext) new() (ctx *libssl.SSLCtx, err error) {
 	if err = Init(c.TLS.LibsslVersion); err != nil {
 		return nil, err
 	}
-	if err = runWithLockedOSThread(func() error {
-		ctx, err = newSslCtx(c.TLS.Method)
-		if err != nil {
-			libssl.SSLCtxFree(ctx)
-			return err
-		}
-		if err = c.apply(ctx); err != nil {
-			libssl.SSLCtxFree(ctx)
-			return err
-		}
-		return nil
-	}); err != nil {
+	ctx, err = newSslCtx(c.TLS.Method)
+	if err != nil {
+		libssl.SSLCtxFree(ctx)
+		return nil, err
+	}
+	if err = c.apply(ctx); err != nil {
+		libssl.SSLCtxFree(ctx)
 		return nil, err
 	}
 	return ctx, nil

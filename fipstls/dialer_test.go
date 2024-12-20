@@ -153,12 +153,14 @@ func TestDialTimeout(t *testing.T) {
 			request := fmt.Sprintf("GET /get HTTP/1.1\r\nHost: %s\r\n\r\n", u.Host)
 			// For read timeout tests, send a GET that will sleep
 			if tt.readDeadline > 0 {
+				t.Logf("Testing read deadline")
 				conn.SetReadDeadline(time.Now().Add(tt.readDeadline))
 				request = fmt.Sprintf("GET /sleep/%d HTTP/1.1\r\nHost: %s\r\n\r\n",
 					tt.readDeadline.Milliseconds()*2, u.Host)
 			}
 			// For write tests, sleep before completing the write
 			if tt.writeDeadline > 0 {
+				t.Logf("Testing write deadline")
 				conn.SetReadDeadline(time.Now().Add(tt.writeDeadline))
 				// Write first half of request
 				if _, err := conn.Write([]byte(request[:len(request)/2])); err != nil {
@@ -170,6 +172,7 @@ func TestDialTimeout(t *testing.T) {
 				request = request[len(request)/2:]
 			}
 
+			t.Logf("Attempting to write request")
 			_, err = conn.Write([]byte(request))
 			if err != nil {
 				if tt.wantErr != nil {
@@ -181,6 +184,7 @@ func TestDialTimeout(t *testing.T) {
 				t.Fatalf("Failed to write request: %v", err)
 			}
 
+			t.Logf("Attempting to read response")
 			reader := bufio.NewReader(conn)
 			response, err := reader.ReadString('\n')
 

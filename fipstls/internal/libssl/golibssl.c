@@ -258,16 +258,6 @@ go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname)
     if (r != 1) {
         return r;
     }
-
-    r = go_openssl_SSL_connect(ssl);
-    if (r != 1) {
-        return r;
-    }
-
-    r = go_openssl_SSL_get_verify_result(ssl);
-    if (r != GO_X509_V_OK) {
-        return r;
-    }
     return 0;
 }
 

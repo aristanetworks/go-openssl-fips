@@ -30,10 +30,8 @@ func NewBIO(addr string, family, mode int) (b *BIO, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = runWithLockedOSThread(func() error {
-		b.bio, b.sockfd, err = libssl.CreateBIO(b.hostname, b.port, family, mode)
-		return err
-	}); err != nil {
+	b.bio, b.sockfd, err = libssl.CreateBIO(b.hostname, b.port, family, mode)
+	if err != nil {
 		return nil, err
 	}
 	if err := b.setAddrInfo(); err != nil {
