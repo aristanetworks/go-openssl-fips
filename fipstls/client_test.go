@@ -22,7 +22,7 @@ import (
 // TestSSLClientGet
 func TestSSLClientGet(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	ts := testutils.NewTestServer(t)
+	ts := testutils.NewServer(t)
 	defer ts.Close()
 
 	client := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
@@ -93,7 +93,7 @@ func TestSSLClientGet(t *testing.T) {
 // TestSSLClientPost
 func TestSSLClientPost(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	ts := testutils.NewTestServer(t)
+	ts := testutils.NewServer(t)
 	defer ts.Close()
 
 	client := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
@@ -140,7 +140,7 @@ func TestSSLClientPost(t *testing.T) {
 }
 
 func TestSSLClientPostTrace(t *testing.T) {
-	ts := testutils.NewTestServer(t)
+	ts := testutils.NewServer(t)
 	defer ts.Close()
 
 	client := fipstls.NewClient(

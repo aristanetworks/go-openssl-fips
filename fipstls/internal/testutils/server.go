@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -116,8 +118,8 @@ func tracingHandler(trace *ServerTrace, handler http.Handler) http.Handler {
 	})
 }
 
-// NewTestServer creates a new test HTTPS server with tracing.
-func NewTestServer(t *testing.T) *TestServer {
+// NewServer creates a new test HTTPS server with tracing.
+func NewServer(t *testing.T) *TestServer {
 	if certErr != nil {
 		t.Fatal(certErr)
 	}
@@ -162,6 +164,26 @@ func NewTestServer(t *testing.T) *TestServer {
 		}
 
 		response := map[string]string{"message": "This is a GET response"}
+		json.NewEncoder(w).Encode(response)
+	})
+
+	mux.HandleFunc("/sleep/", func(w http.ResponseWriter, r *http.Request) {
+		// Extract sleep duration from path
+		parts := strings.Split(r.URL.Path, "/")
+		if len(parts) != 3 {
+			http.Error(w, "Invalid sleep duration", http.StatusBadRequest)
+			return
+		}
+
+		ms, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid sleep duration", http.StatusBadRequest)
+			return
+		}
+
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+
+		response := map[string]string{"message": "Slept for requested duration"}
 		json.NewEncoder(w).Encode(response)
 	})
 

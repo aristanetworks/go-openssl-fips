@@ -107,7 +107,7 @@ func (c *Conn) opWithDeadline(b []byte, timer *atomic.Pointer[deadlineTimer],
 	}()
 	select {
 	case <-ctx.Done():
-		c.trace(fmt.Sprintf("Deadline reached after %+v", time.Since(tStart)))
+		c.trace(fmt.Sprintf("Deadline exceeded in %+v", time.Since(tStart)))
 		return 0, os.ErrDeadlineExceeded
 	case result := <-resultCh:
 		c.trace("Deadline <-resultCh")
