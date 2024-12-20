@@ -53,17 +53,17 @@ This feature does not require any additional configuration, but it only works wi
 
 ## Examples
 
-The `fipstls.SSLContext` must be configured before the client or dialer can be used. The `fipstls.SSLContext` is responsible for initializing libssl and TLS configuration that will be used to create `fipstls.SSL` connections.
+The [`fipstls.SSLContext`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSLContext) must be configured before the client or dialer can be used. The `fipstls.SSLContext` is responsible for initializing libssl and TLS configuration that will be used to create [`fipstls.SSL`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSL) connections.
 
 There are two options initializing the `fipstls.SSLContext`:
 - [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `C.SSL_CTX` object. Instead, the `fipstls.Dialer` will create and cleanup the `C.SSL_CTX` every new `fipstls.SSL` connection.
-- [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `SSL_CTX` object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
+- [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `C.SSL_CTX` object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
 
-Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in in the SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated for it.
+Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in the C.SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated for it.
 
 ### 1. Creating a Default Client
 
-This example demonstrates how to create a default `http.Client` with TLS configured using `NewDefaultClient`. The underlying `libssl.SSLCtx` is managed by the `Dialer` and recreated for each roundtrip.
+This example demonstrates how to create a default `http.Client` with TLS configured using [`NewClient`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewClient). The underlying `C.SSL_CTX` is managed by the [`Dialer`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#Dialer) and recreated for each roundtrip.
 
 ```go
 import (
@@ -94,7 +94,7 @@ func main() {
 
 ### 2. Creating a Client with a Reusable Context
 
-This example demonstrates how to create an `http.Client` with a reuseable `fipstls.SSLContext` using `NewUnsafeCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
+This example demonstrates how to create an `http.Client` with an unsafe, reuseable `fipstls.SSLContext` using `NewUnsafeCtx`. This creates the `C.SSL_CTX` once and allows it to be reused across multiple roundtrips, improving performance.
 
 ```go
 import (
@@ -127,7 +127,7 @@ func main() {
 
 ### 3. Creating a Default Dialer
 
-This example demonstrates how to create a default `Dialer` with default options using `NewCtx`. The underlying `libssl.SSLCtx` is managed by the `Dialer`.
+This example demonstrates how to create a default `Dialer` using `NewCtx`. The underlying `C.SSL_CTX` is managed by the `Dialer`.
 
 ``` go
 package main
@@ -167,7 +167,7 @@ func main() {
 
 ### 4. Creating a Dialer with a Reusable Context
 
-This example demonstrates how to create a `Dialer` with a unsafe, reusable `fipstls.SSLContext` using `NewUnsafeCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
+This example demonstrates how to create a `Dialer` with an unsafe, reusable `fipstls.SSLContext` using `NewUnsafeCtx`. This creates the `fipstls.SSLContext` once and allows the `libssl.SSLCtx` to be reused across multiple roundtrips, improving performance.
 ``` go
 package main
 

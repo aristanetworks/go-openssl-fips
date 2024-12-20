@@ -6,7 +6,7 @@
 // responsible for initializing libssl and the TLS [Config] that will be used to
 // create [SSL] connections.
 //
-// There are two options initializing the [SSLContext],
+// There are two options for initializing the [SSLContext],
 //   - [NewCtx] will initialize the C.SSL_CTX with TLS configuration options only, but
 //     not create the underlying C.SSL_CTX object. Instead, the [Dialer] will create and
 //     cleanup the C.SSL_CTX every new [SSL] connection.
