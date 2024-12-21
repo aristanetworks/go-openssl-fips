@@ -50,7 +50,14 @@ func (s *SSL) configureBIO(b *BIO) error {
 
 // Connect initiates a TLS handshake with the peer.
 func (s *SSL) Connect() error {
-	return libssl.SSLConnect(s.ssl)
+	err := libssl.SSLConnect(s.ssl)
+	if err == nil {
+		return err
+	}
+	if err := libssl.SSLGetVerifyResult(s.ssl); err != nil {
+		return err
+	}
+	return nil
 }
 
 // SSL returns a pointer to the underlying [libssl.SSL] C object.

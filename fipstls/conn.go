@@ -186,13 +186,13 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *Conn) doIO(b []byte, kind string) (int, error) {
-	c.trace(fmt.Sprintf("%v doIO begin", kind))
-	defer c.trace(fmt.Sprintf("%v doIO end", kind))
+func (c *Conn) doIO(b []byte, opKind string) (int, error) {
+	c.trace(fmt.Sprintf("%v doIO begin", opKind))
+	defer c.trace(fmt.Sprintf("%v doIO end", opKind))
 
 	d := time.Time{}
 	var op opFunc
-	switch kind {
+	switch opKind {
 	case opRead:
 		d = c.readDeadline
 		op = c.ssl.Read
@@ -223,13 +223,21 @@ func (c *Conn) doIO(b []byte, kind string) (int, error) {
 		if err, ok := err.(*libssl.SSLError); ok {
 			switch err.Code {
 			case libssl.SSL_ERROR_WANT_READ, libssl.SSL_ERROR_WANT_WRITE:
-				c.trace(fmt.Sprintf("%v doIO want read / write", kind))
 				continue
 			case libssl.SSL_ERROR_ZERO_RETURN:
-				c.trace(fmt.Sprintf("%v doIO return zero", kind))
+				c.trace(fmt.Sprintf("%v doIO return zero", opKind))
 				return 0, io.EOF
+			case libssl.SSL_ERROR_SSL:
+				if opKind == opClose {
+					// if we got an SSL_ERROR_SSL during a second shutdown, that means the peer
+					// did not do a clean shutdown.
+					c.trace(fmt.Sprintf("%s doIO forced closed", opKind))
+				}
+				// we're ignoring this
+				return 0, nil
 			default:
-				return 0, newConnError(kind, c.remoteAddr, err)
+				c.trace(fmt.Sprintf("%v doIO error: %v", opKind, err))
+				return 0, newConnError(opKind, c.remoteAddr, err)
 			}
 		}
 	}
