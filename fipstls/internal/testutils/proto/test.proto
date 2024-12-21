@@ -1,0 +1,25 @@
+// internal/testutils/proto/test.proto
+syntax = "proto3";
+
+package testutils;
+
+option go_package = "github.com/aristnetworks/go-openssl-fips/fipstls/internal/testutils/proto";
+
+service YourService {
+  // Server Streaming
+  rpc ServerStream(Request) returns (stream Response) {}
+
+  // Client Streaming
+  rpc ClientStream(stream Request) returns (Response) {}
+
+  // Bidirectional Streaming
+  rpc BidiStream(stream Request) returns (stream Response) {}
+}
+
+message Request {
+  string message = 1;
+}
+
+message Response {
+  string message = 1;
+}

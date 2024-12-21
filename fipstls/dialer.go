@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"syscall"
 	"time"
 )
 
@@ -37,6 +36,9 @@ type Dialer struct {
 
 	// ConnTraceEnabled enables debug tracing in the [Conn].
 	ConnTraceEnabled bool
+
+	// Network is one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or "unix".
+	Network string
 }
 
 type DialerOption func(*Dialer)
@@ -62,6 +64,13 @@ func WithConnTracingEnabled() DialerOption {
 	}
 }
 
+// WithNetwork can be one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or "unix".
+func WithNetwork(network string) DialerOption {
+	return func(d *Dialer) {
+		d.Network = network
+	}
+}
+
 var ErrEmptyContext = errors.New("fipstls: cannot create fipstls.Dialer from nil fipstls.Context")
 
 // NewDialer is returns a [Dialer] configured with [DialerOption]. The
@@ -70,7 +79,10 @@ func NewDialer(ctx *Context, opts ...DialerOption) (*Dialer, error) {
 	if ctx == nil {
 		return nil, ErrEmptyContext
 	}
-	d := &Dialer{Ctx: ctx}
+	if err := Init(ctx.TLS.LibsslVersion); err != nil {
+		return nil, err
+	}
+	d := &Dialer{Ctx: ctx, Network: DefaultNetwork}
 	for _, o := range opts {
 		o(d)
 	}
@@ -85,7 +97,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 		return nil, err
 	}
 	if network == "" {
-		network = DefaultNetwork
+		network = d.Network
 	}
 	bio, err := d.dialBIO(ctx, network, addr)
 	if err != nil {
@@ -97,20 +109,14 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 
 // NewGrpcDialFn returns a dialer function for grpc to create [Conn] connections.
 // The [Context] should not be nil.
-func NewGrpcDialFn(sslCtx *Context, network string, opts ...DialerOption) (func(context.Context,
+func NewGrpcDialFn(sslCtx *Context, opts ...DialerOption) (func(context.Context,
 	string) (net.Conn, error), error) {
 	d, err := NewDialer(sslCtx, opts...)
 	if err != nil {
 		return nil, err
 	}
-	if network == "" {
-		network = DefaultNetwork
-	}
 	return func(ctx context.Context, addr string) (net.Conn, error) {
-		if err := Init(sslCtx.TLS.LibsslVersion); err != nil {
-			return nil, err
-		}
-		bio, err := d.dialBIO(ctx, network, addr)
+		bio, err := d.dialBIO(ctx, d.Network, addr)
 		if err != nil {
 			bio.Close()
 			return nil, err
@@ -120,10 +126,6 @@ func NewGrpcDialFn(sslCtx *Context, network string, opts ...DialerOption) (func(
 }
 
 func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error) {
-	family, err := parseNetwork(network)
-	if err != nil {
-		return nil, err
-	}
 	deadline := d.deadline(ctx, time.Now())
 	if !deadline.IsZero() {
 		if d, ok := ctx.Deadline(); !ok || deadline.Before(d) {
@@ -140,7 +142,7 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 	ch := make(chan bioResult)
 	go func() {
 		// create non-blocking BIO
-		b, err := NewBIO(addr, family, 1)
+		b, err := NewBIO(addr, network, 1)
 		ch <- bioResult{b, err}
 	}()
 
@@ -149,22 +151,9 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 		return nil, ctx.Err()
 	case b := <-ch:
 		if b.err != nil {
-			return nil, b.err
+			return b.bio, b.err
 		}
 		return b.bio, nil
-	}
-}
-
-func parseNetwork(network string) (int, error) {
-	switch network {
-	case "tcp", "tcp4":
-		return syscall.AF_INET, nil
-	case "tcp6":
-		return syscall.AF_INET6, nil
-	case "unix":
-		return syscall.AF_UNIX, nil
-	default:
-		return 0, net.UnknownNetworkError(network)
 	}
 }
 
@@ -176,6 +165,10 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 	}
 	conn, err := NewConn(ctx, bio, d.Deadline, d.ConnTraceEnabled)
 	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if err := conn.Handshake(); err != nil {
 		conn.Close()
 		return nil, err
 	}

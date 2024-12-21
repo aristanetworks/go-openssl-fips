@@ -17,7 +17,6 @@ import (
 // from [Context].
 type Conn struct {
 	ssl *libssl.SSL
-	ctx io.Closer
 	bio *BIO
 	// closed tracks conn closure state
 	closer Closer
@@ -77,76 +76,72 @@ func NewConn(ctx *Context, bio *BIO, deadline time.Time, trace bool) (*Conn, err
 		libssl.SSLFree(ssl)
 		return nil, err
 	}
-	s := &Conn{
+	c := &Conn{
 		ssl:               ssl,
-		ctx:               ctx,
 		bio:               bio,
 		closer:            noopCloser{},
 		handshakeDeadline: deadline,
 		enableTrace:       trace,
 	}
-	if err := s.configureBIO(s.bio); err != nil {
-		libssl.SSLFree(s.ssl)
+	if err := c.configureBIO(c.bio); err != nil {
+		libssl.SSLFree(c.ssl)
 		return nil, err
 	}
-	s.closer = &onceCloser{
+	c.closer = &onceCloser{
 		closeFunc: func() error {
-			s.closed.Store(true)
-			return libssl.SSLFree(s.ssl)
+			defer ctx.Close()
+			return libssl.SSLFree(c.ssl)
 		},
 	}
-	if s.enableTrace {
-		s.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
+	if c.enableTrace {
+		c.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
 	}
-	s.trace("New conn")
-	return s, nil
+	return c, nil
 }
 
-func (s *Conn) configureBIO(b *BIO) error {
-	s.bio = b
-	if err := libssl.SSLConfigureBIO(s.ssl, b.BIO(), b.Hostname()); err != nil {
+func (c *Conn) configureBIO(b *BIO) error {
+	c.bio = b
+	if err := libssl.SSLConfigureBIO(c.ssl, b.BIO(), b.Hostname()); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Conn) connect() error {
-	err := libssl.SSLConnect(s.ssl)
+func (c *Conn) connect() error {
+	err := libssl.SSLConnect(c.ssl)
 	if err == nil {
 		return err
 	}
-	if err := libssl.SSLGetVerifyResult(s.ssl); err != nil {
-		return err
-	}
 	return nil
 }
 
-// Connect initiates a TLS handshake with the peer.
-func (s *Conn) Connect() error {
-	s.trace("Write begin")
-	defer s.trace("Write end")
-	_, err := s.doIO(nil, opHandshake)
+// Handshake initiates a TLS handshake with the peer.
+func (c *Conn) Handshake() error {
+	c.trace("Handshake begin")
+	defer c.trace("Handshake end")
+	_, err := c.doNonBlockingIO(nil, opHandshake)
+
 	return err
 }
 
 // LocalAddr returns the local address if known.
-func (s *Conn) LocalAddr() net.Addr {
-	return s.bio.LocalAddr()
+func (c *Conn) LocalAddr() net.Addr {
+	return c.bio.LocalAddr()
 }
 
 // RemoteAddr returns the peer address if known.
-func (s *Conn) RemoteAddr() net.Addr {
-	return s.bio.RemoteAddr()
+func (c *Conn) RemoteAddr() net.Addr {
+	return c.bio.RemoteAddr()
 }
 
 // Read will read bytes into the buffer from the [Conn] connection.
-func (s *Conn) read(b []byte) (int, error) {
-	if s.closer.Err() != nil {
-		return 0, s.closer.Err()
+func (c *Conn) read(b []byte) (int, error) {
+	if c.closer.Err() != nil {
+		return 0, c.closer.Err()
 	}
-	r, n, err := libssl.SSLReadEx(s.ssl, int64(len(b)))
+	r, n, err := libssl.SSLReadEx(c.ssl, int64(len(b)))
 	if err != nil {
-		if err := libssl.SSLGetVerifyResult(s.ssl); err != nil {
+		if err := libssl.SSLGetVerifyResult(c.ssl); err != nil {
 			return n, err
 		}
 		return n, err
@@ -165,15 +160,15 @@ func (c *Conn) Read(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	return c.doIO(b, opRead)
+	return c.doNonBlockingIO(b, opRead)
 }
 
 // Write will write bytes from the buffer to the [Conn] connection.
-func (s *Conn) write(b []byte) (int, error) {
-	if s.closed.Load() {
-		return 0, s.closer.Err()
+func (c *Conn) write(b []byte) (int, error) {
+	if c.closed.Load() {
+		return 0, c.closer.Err()
 	}
-	return libssl.SSLWriteEx(s.ssl, b)
+	return libssl.SSLWriteEx(c.ssl, b)
 }
 
 var ErrShutdown = errors.New("fipstls: protocol is shutdown")
@@ -186,23 +181,16 @@ func (c *Conn) Write(b []byte) (int, error) {
 		// we're done writing
 		return 0, ErrShutdown
 	}
-
-	return c.doIO(b, opWrite)
+	return c.doNonBlockingIO(b, opWrite)
 }
 
 // Shutdown will send a close-notify alert to the peer to gracefully shutdown
 // the [Conn] connection.
-func (s *Conn) shutdown() error {
-	if s.closed.Load() {
-		return s.closer.Err()
+func (c *Conn) shutdown() error {
+	if c.closed.Load() {
+		return c.closer.Err()
 	}
-	return libssl.SSLShutdown(s.ssl)
-}
-
-// close frees the [libssl.SSL] C object allocated for [Conn].
-func (s *Conn) close() error {
-	defer s.ctx.Close()
-	return s.closer.Close()
+	return libssl.SSLShutdown(c.ssl)
 }
 
 // Close will attempt to cleanly shutdown the [Conn] connection and free [Conn] and optionally
@@ -221,8 +209,8 @@ func (c *Conn) closeNotify() error {
 	if !c.closeNotifySent {
 		// Set a Write Deadline to prevent possibly blocking forever.
 		c.SetWriteDeadline(time.Now().Add(time.Second * 5))
-		_, c.closeErr = c.doIO(nil, opShutdown)
-		defer c.close()
+		_, c.closeErr = c.doNonBlockingIO(nil, opShutdown)
+		defer c.closer.Close()
 		c.closeNotifySent = true
 		c.closed.Store(true)
 		// Any subsequent writes will fail.
@@ -259,9 +247,9 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *Conn) doIO(b []byte, opKind string) (int, error) {
-	c.trace(fmt.Sprintf("%v doIO begin", opKind))
-	defer c.trace(fmt.Sprintf("%v doIO end", opKind))
+func (c *Conn) doNonBlockingIO(b []byte, opKind string) (int, error) {
+	c.trace(fmt.Sprintf("%v non-blocking begin", opKind))
+	defer c.trace(fmt.Sprintf("%v non-blocking end", opKind))
 
 	d := time.Time{}
 	var op opFunc
@@ -299,18 +287,22 @@ func (c *Conn) doIO(b []byte, opKind string) (int, error) {
 			case libssl.SSL_ERROR_WANT_READ, libssl.SSL_ERROR_WANT_WRITE:
 				continue
 			case libssl.SSL_ERROR_ZERO_RETURN:
-				c.trace(fmt.Sprintf("%v doIO return zero", opKind))
+				c.trace(fmt.Sprintf("%v non-blocking return zero", opKind))
 				return result, io.EOF
 			case libssl.SSL_ERROR_SSL:
+				// check if its a verification error
+				if err := libssl.SSLGetVerifyResult(c.ssl); err != nil {
+					return result, err
+				}
 				if opKind == opShutdown {
 					// if we got an SSL_ERROR_SSL during a second shutdown, that means the peer
 					// did not do a clean shutdown.
-					c.trace(fmt.Sprintf("%s doIO forced closed", opKind))
-					// we're ignoring this
+					c.trace(fmt.Sprintf("%s non-blocking forced closed", opKind))
+					// otherwise we ignore it
 					return result, nil
 				}
 			default:
-				c.trace(fmt.Sprintf("%v doIO error: %v", opKind, err))
+				c.trace(fmt.Sprintf("%v non-blocking error: %v", opKind, err))
 				return result, newConnError(opKind, c.remoteAddr, err)
 			}
 		}

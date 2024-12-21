@@ -1,4 +1,4 @@
-//go:generate go run certs/generate_cert.go certs/
+//go:generate go run certs/gencert.go certs/
 package testutils
 
 import (

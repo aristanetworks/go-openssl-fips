@@ -19,23 +19,40 @@ type BIO struct {
 	remoteAddr net.Addr
 }
 
+func parseNetwork(network string) (int, error) {
+	switch network {
+	case "tcp", "tcp4":
+		return syscall.AF_INET, nil
+	case "tcp6":
+		return syscall.AF_INET6, nil
+	case "unix":
+		return syscall.AF_UNIX, nil
+	default:
+		return 0, net.UnknownNetworkError(network)
+	}
+}
+
 // NewBIO will create a new [libssl.BIO] connected to the host. It can be either blocking (mode=0)
 // or non-blocking (mode=1).
-func NewBIO(addr string, family, mode int) (b *BIO, err error) {
+func NewBIO(addr, network string, mode int) (b *BIO, err error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
 	b = &BIO{closer: noopCloser{}}
 	b.hostname, b.port, err = net.SplitHostPort(addr)
 	if err != nil {
-		return nil, err
+		return b, err
+	}
+	family, err := parseNetwork(network)
+	if err != nil {
+		return b, err
 	}
 	b.bio, b.sockfd, err = libssl.CreateBIO(b.hostname, b.port, family, mode)
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 	if err := b.setAddrInfo(); err != nil {
-		return nil, err
+		return b, err
 	}
 	b.closer = &onceCloser{
 		closeFunc: func() error {
