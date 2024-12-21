@@ -10,13 +10,13 @@ import (
 	"net/http/httputil"
 )
 
-// Transport implements [http.RoundTripper] by dialing [SSL] connections using [Dialer].
+// Transport implements [http.RoundTripper] by dialing TLS [Conn] using [Dialer].
 type Transport struct {
 	Dialer             *Dialer
 	DisableCompression bool
 }
 
-// RoundTrip does a single HTTP transaction. It dials a new [SSL] connection every roundtrip.
+// RoundTrip does a single HTTP transaction. It dials a new [Conn] connection every roundtrip.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	port := req.URL.Port()
 	if port == "" {

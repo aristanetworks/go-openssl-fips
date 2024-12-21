@@ -15,89 +15,6 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
-// func TestDialConn(t *testing.T) {
-// 	defer testutils.LeakCheckLSAN(t)
-// 	ts := testutils.NewTestServer(t)
-// 	defer ts.Close()
-
-// 	u, err := url.Parse(ts.URL)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	host, port, err := net.SplitHostPort(u.Host)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	d := fipstls.NewDialer(
-// 		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-// 		fipstls.WithConnTracingEnabled(),
-// 	)
-// 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
-// 	if err != nil {
-// 		t.Fatalf("Failed to create SSLConn: %v", err)
-// 	}
-// 	defer conn.Close()
-
-// 	request := fmt.Sprintf("GET /get HTTP/1.1\r\nHost: %s\r\n\r\n", host)
-// 	_, err = conn.Write([]byte(request))
-// 	if err != nil {
-// 		t.Fatalf("Failed to write request: %v", err)
-// 	}
-
-// 	reader := bufio.NewReader(conn)
-// 	response, err := reader.ReadString('\n')
-// 	if err != nil {
-// 		t.Fatalf("Failed to read response: %v", err)
-// 	}
-
-// 	if !strings.Contains(string(response), "HTTP/1.1") {
-// 		t.Errorf("Unexpected response: %s", response)
-// 	}
-// 	fmt.Printf("Response: %s\n", string(response))
-// }
-
-// func TestDialDeadline(t *testing.T) {
-// 	defer testutils.LeakCheckLSAN(t)
-// 	ts := testutils.NewTestServer(t)
-// 	defer ts.Close()
-
-// 	u, err := url.Parse(ts.URL)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	host, port, err := net.SplitHostPort(u.Host)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	d := fipstls.NewDialer(
-// 		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-// 		fipstls.WithConnTracingEnabled(),
-// 	)
-// 	conn, err := d.DialContext(context.Background(), "tcp", net.JoinHostPort(host, port))
-// 	if err != nil {
-// 		t.Fatalf("Failed to create SSLConn: %v", err)
-// 	}
-// 	defer conn.Close()
-
-// 	conn.SetDeadline(time.Now().Add(2 * time.Second))
-// 	request := fmt.Sprintf("GET /get HTTP/1.1\r\nHost: %s\r\n\r\n", host)
-// 	_, err = conn.Write([]byte(request))
-// 	if err != nil {
-// 		t.Fatalf("Failed to write request: %v", err)
-// 	}
-// 	time.Sleep(3 * time.Second)
-
-// 	reader := bufio.NewReader(conn)
-// 	_, err = reader.ReadString('\n')
-// 	if err == nil {
-// 		t.Fatal("Deadline should have been reached")
-// 	} else if errors.Is(err, os.ErrDeadlineExceeded) {
-// 		t.Logf("Deadline reached as expected with err %v", err)
-// 	} else {
-// 		t.Fatalf("Error is not deadline error: %v", err)
-// 	}
-// }
-
 func TestDialTimeout(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 	// Create and start the server directly
@@ -109,10 +26,13 @@ func TestDialTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d := fipstls.NewDialer(
+	d, err := fipstls.NewDialer(
 		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
 		fipstls.WithConnTracingEnabled(),
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	conn, err := d.DialContext(context.Background(), "tcp", u.Host)
 	if err != nil {
@@ -124,7 +44,6 @@ func TestDialTimeout(t *testing.T) {
 		name          string
 		writeDeadline time.Duration
 		readDeadline  time.Duration
-		serverDelay   time.Duration
 		wantErr       error
 		checkResponse bool
 	}{
@@ -211,19 +130,18 @@ func TestDialTimeout(t *testing.T) {
 	}
 }
 
-func TestDialNilContext(t *testing.T) {
+func TestDialError(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic with nil context, but got none")
-		}
-	}()
-
-	// This should panic
-	fipstls.NewDialer(
+	// This should error
+	_, err := fipstls.NewDialer(
 		nil,
 		fipstls.WithConnTracingEnabled(),
 	)
-	t.Error("Expected panic, but function returned normally")
+	if err == nil {
+		t.Fatalf("Expected %v error but got nil", fipstls.ErrEmptyContext)
+	}
+	if err != nil && errors.Is(err, fipstls.ErrEmptyContext) {
+		t.Logf("Got %v", fipstls.ErrEmptyContext)
+	}
 }

@@ -53,11 +53,11 @@ This feature does not require any additional configuration, but it only works wi
 
 ## Examples
 
-The [`fipstls.SSLContext`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSLContext) must be configured before the client or dialer can be used. The `fipstls.SSLContext` is responsible for initializing libssl and TLS configuration that will be used to create [`fipstls.SSL`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSL) connections.
+The [`fipstls.SSLContext`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSLContext) must be configured before the client or dialer can be used. The `fipstls.SSLContext` is responsible for initializing libssl and TLS configuration that will be used to create [`fipstls.Conn`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSLConn) connections.
 
 There are two options initializing the `fipstls.SSLContext`:
-- [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `C.SSL_CTX` object. Instead, the `fipstls.Dialer` will create and cleanup the `C.SSL_CTX` every new `fipstls.SSL` connection.
-- [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `C.SSL_CTX` object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.SSL` connections.
+- [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.SSLContext` with TLS configuration options only, but not create the underlying `C.SSL_CTX` object. Instead, the `fipstls.Dialer` will create and cleanup the `C.SSL_CTX` every new `fipstls.Conn` connection.
+- [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `C.SSL_CTX` object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.Conn` connections.
 
 Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in the C.SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated for it.
 
@@ -75,16 +75,16 @@ import (
 
 func main() {
 	// Create a default client with TLS configured for TLS 1.3
-	sslCtx := fipstls.NewCtx(
+	client, err := fipstls.NewClient(fipstls.NewCtx(
 		fipstls.WithCaFile("/path/to/cert.pem"),
-		fipstls.WithMinTLSVersion(fipstls.Version13))
-	client := fiptls.NewClient(sslCtx)
-
+		fipstls.WithMinTLSVersion(fipstls.Version13)))
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	// Use the client to make HTTPS requests
 	resp, err := client.Get("https://example.com")
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		log.Fatalf("Failed get request: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -99,6 +99,7 @@ This example demonstrates how to create an `http.Client` with an unsafe, reuseab
 ```go
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls"
@@ -108,12 +109,15 @@ func main() {
 	// Create a client with an unsafe, reusable Context
 	ctx, err := fipstls.NewUnsafeCtx()
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		log.Fatalf("Failed to create context: %v", err)
 	}
 	defer ctx.Close() // Close the Context when done
 
-	client := fipstls.NewClient(ctx)
+	client, err := fipstls.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
 	// Use the client to make HTTPS requests
 	_, err = client.Get("https://example.com")
 	// ...
@@ -143,9 +147,12 @@ import (
 
 func main() {
 	// Create an fipstls.Dialer with the configured context
-	dialFn := fiptls.NewGrpcDialFn(
+	dialFn, err := fiptls.NewGrpcDialFn(
 		fipstls.NewCtx(fipstls.WithCaFile("/path/to/cert.pem")),
 		fipstls.WithTimeout(10 * time.Second))
+	if err != nil {
+		log.Fatalf("Failed to create grpc dialer: %v", err)
+	}
 
 	// Use grpc.WithContextDialer to create a gRPC connection that will create
 	// a new Context every dial
@@ -189,7 +196,10 @@ func main() {
 	}
 	// this will free the C memory allocated for the context
 	defer ctx.Close()
-	fipsDialFn := fiptls.NewGrpcDialFn(ctx, "tcp", fipstls.WithTimeout(10 * time.Second))
+	fipsDialFn, err := fiptls.NewGrpcDialFn(ctx, "tcp", fipstls.WithTimeout(10 * time.Second))
+	if err != nil {
+		log.Fatalf("Failed to create grpc dialer: %v", err)
+	}
 
 	// Use grpc.WithContextDialer to create a gRPC connection that will reuse
 	// the context to create SSL connections.
@@ -212,45 +222,134 @@ func main() {
 
 ## Benchmarks
 
-Some benchmark results comparing the `fipstls.Client` to `http.Client`. The server used in the tests is httpbingo.org.
+Some benchmark results comparing the `fipstls.Client` to `http.Client`. The server used in the tests is httpbingo.org. Example run:
 ```
-> go test -bench "BenchmarkClientSSL*" -benchmem -run ^$
+> go test -failfast -count=20 -bench "BenchmarkClientSSL*/MIXED" -benchmem -run ^$
 goos: linux
 goarch: amd64
 pkg: github.com/aristanetworks/go-openssl-fips/fipstls
 cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
-BenchmarkClientSSL/Custom_OSSL_Client_GET-96                  14          97719506 ns/op           88790 B/op        253 allocs/op
-BenchmarkClientSSL/Custom_OSSL_Client_POST-96                 14         450657159 ns/op           91713 B/op        191 allocs/op
-BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                15         105323361 ns/op           91306 B/op        220 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          83867458 ns/op          899700 B/op      28019 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                16          87604697 ns/op          904849 B/op      27745 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          87617542 ns/op          889245 B/op      26991 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                15          81588057 ns/op          918214 B/op      28369 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          84004782 ns/op          882894 B/op      27243 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                10         152552246 ns/op          808991 B/op      24474 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                12          98492739 ns/op          826965 B/op      25201 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                12          98320802 ns/op          724451 B/op      21521 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                12          95175290 ns/op          964964 B/op      29649 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13         116746389 ns/op          804663 B/op      24002 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                15          83747989 ns/op          837553 B/op      25312 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          94063913 ns/op          674540 B/op      19814 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          92405464 ns/op          699888 B/op      20557 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                12          86227267 ns/op          768018 B/op      23329 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          90324236 ns/op          894168 B/op      27460 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          95083683 ns/op          771742 B/op      23138 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                14          87884232 ns/op          791622 B/op      23987 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                13          86478534 ns/op          781618 B/op      23899 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                15          90007049 ns/op          801590 B/op      23983 allocs/op
+BenchmarkClientSSL/Custom_OSSL_Client_MIXED-96                14          89964775 ns/op          812952 B/op      24680 allocs/op
 PASS
-ok      github.com/aristanetworks/go-openssl-fips/fipstls  11.497s
+ok      github.com/aristanetworks/go-openssl-fips/fipstls       37.727s
 ```
 
+### Default SSL Client
+____________________
 ```
-> go test -bench "BenchmarkClientCachedSSL*" -benchmem -run ^$
 goos: linux
 goarch: amd64
 pkg: github.com/aristanetworks/go-openssl-fips/fipstls
 cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
-BenchmarkClientCachedSSL/Custom_OSSL_Client_Cached_GET-96                     30          46490736 ns/op           88611 B/op        251 allocs/op
-BenchmarkClientCachedSSL/Custom_OSSL_Client_Cached_POST-96                    28          40520187 ns/op           88877 B/op        186 allocs/op
-BenchmarkClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96                   31          43065017 ns/op           92676 B/op        223 allocs/op
-PASS
-ok      github.com/aristanetworks/go-openssl-fips/fipstls  4.580s
-```
+                                      │ ssl-default │
+                                      │   sec/op    │
+ClientSSL/Custom_OSSL_Client_MIXED-96   89.99m ± 6%
+
+                                      │  ssl-default  │
+                                      │     B/op      │
+ClientSSL/Custom_OSSL_Client_MIXED-96   792.0Ki ± 10%
+
+                                      │ ssl-default  │
+                                      │  allocs/op   │
+ClientSSL/Custom_OSSL_Client_MIXED-96   24.58k ± 11%
 
 ```
-> go test -bench "BenchmarkClientDefault*" -benchmem -run ^$
+
+### "Cached", Unsafe, Reused SSL Client
+____________________
+```
 goos: linux
 goarch: amd64
 pkg: github.com/aristanetworks/go-openssl-fips/fipstls
 cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
-BenchmarkClientDefault/Standard_HTTP_Client_GET-96                    51          23254395 ns/op           56392 B/op        148 allocs/op
-BenchmarkClientDefault/Standard_HTTP_Client_POST-96                   51          40406477 ns/op          148356 B/op        941 allocs/op
-BenchmarkClientDefault/Standard_HTTP_Client_MIXED-96                  38          30623265 ns/op           99794 B/op        500 allocs/op
-PASS
-ok      github.com/aristanetworks/go-openssl-fips/fipstls       5.861s
+                                                   │ ssl-cached  │
+                                                   │   sec/op    │
+ClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96   39.84m ± 2%
+
+                                                   │  ssl-cached  │
+                                                   │     B/op     │
+ClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96   663.1Ki ± 5%
+
+                                                   │ ssl-cached  │
+                                                   │  allocs/op  │
+ClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96   20.22k ± 5%
 ```
+
+### Default http.Client
+____________________
+```
+goos: linux
+goarch: amd64
+pkg: github.com/aristanetworks/go-openssl-fips/fipstls
+cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
+                                            │ http-default │
+                                            │    sec/op    │
+ClientDefault/Standard_HTTP_Client_MIXED-96    33.10m ± 5%
+
+                                            │ http-default │
+                                            │     B/op     │
+ClientDefault/Standard_HTTP_Client_MIXED-96   102.3Ki ± 4%
+
+                                            │ http-default │
+                                            │  allocs/op   │
+ClientDefault/Standard_HTTP_Client_MIXED-96     539.5 ± 7%
+```
+
+## Benchstat Comparison
+Generated with `benchstat http-default ssl-cached ssl-default > compare-benchstat`
+```
+goos: linux
+goarch: amd64
+pkg: github.com/aristanetworks/go-openssl-fips/fipstls
+cpu: Intel(R) Xeon(R) Gold 5318Y CPU @ 2.10GHz
+                                                   │ http-default │     ssl-cached     │    ssl-default     │
+                                                   │    sec/op    │   sec/op     vs base   │   sec/op     vs base   │
+ClientDefault/Standard_HTTP_Client_MIXED-96           33.10m ± 5%
+ClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96                  39.84m ± 2%
+ClientSSL/Custom_OSSL_Client_MIXED-96                                                    89.99m ± 6%
+geomean                                               33.10m        39.84m       ? ¹ ²   89.99m       ? ¹ ²
+¹ benchmark set differs from baseline; geomeans may not be comparable
+² ratios must be >0 to compute geomean
+
+                                                   │ http-default │     ssl-cached      │     ssl-default      │
+                                                   │     B/op     │     B/op      vs base   │     B/op       vs base   │
+ClientDefault/Standard_HTTP_Client_MIXED-96          102.3Ki ± 4%
+ClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96                  663.1Ki ± 5%
+ClientSSL/Custom_OSSL_Client_MIXED-96                                                     792.0Ki ± 10%
+geomean                                              102.3Ki        663.1Ki       ? ¹ ²   792.0Ki        ? ¹ ²
+¹ benchmark set differs from baseline; geomeans may not be comparable
+² ratios must be >0 to compute geomean
+
+                                                   │ http-default │     ssl-cached     │     ssl-default     │
+                                                   │  allocs/op   │  allocs/op   vs base   │  allocs/op    vs base   │
+ClientDefault/Standard_HTTP_Client_MIXED-96            539.5 ± 7%
+ClientCachedSSL/Custom_OSSL_Client_Cached_MIXED-96                  20.22k ± 5%
+ClientSSL/Custom_OSSL_Client_MIXED-96                                                    24.58k ± 11%
+geomean                                                539.5        20.22k       ? ¹ ²   24.58k        ? ¹ ²
+¹ benchmark set differs from baseline; geomeans may not be comparable
+² ratios must be >0 to compute geomean
+```
+
+Caching the SSL context provides a significant performance benefit in this scenario, cutting the operation time by more than half compared to creating a new context each time. The CGO OpenSSL implementations use significantly more memory, with the cached version being slightly more efficient. The `fipstls` implementation makes many more allocations, though caching helps reduce this somewhat.
 
 ## Acknowledgements
 

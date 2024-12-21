@@ -22,7 +22,8 @@ var (
 
 func BenchmarkClientSSL(b *testing.B) {
 	defer testutils.LeakCheckLSAN(b)
-	osslClient := fipstls.NewClient(fipstls.NewCtx())
+	osslClient, _ := fipstls.NewClient(fipstls.NewCtx())
+
 	b.ResetTimer()
 
 	b.Run("Custom OSSL Client GET", func(b *testing.B) {
@@ -90,7 +91,10 @@ func BenchmarkClientCachedSSL(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	osslClient := fipstls.NewClient(ctx)
+	osslClient, err := fipstls.NewClient(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
 	defer ctx.Close()
 	b.ResetTimer()
 

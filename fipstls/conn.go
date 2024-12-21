@@ -1,6 +1,7 @@
 package fipstls
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,23 +13,25 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
-// Conn is used for writing to and reading from an [SSL] connection. It wraps the connection with
-// deadlines, state-tracking, debug tracing, and concurrency and memory safety.
+// Conn represents a single SSL connection. It inherits configuration options
+// from [Context].
 type Conn struct {
-	// ssl needs to be cleaned up on connection close
-	ssl *SSL
+	ssl *libssl.SSL
 	ctx io.Closer
+	bio *BIO
+	// closed tracks conn closure state
+	closer Closer
+	closed atomic.Bool
+
 	// closeNotifySent is true if the Conn attempted to send an
 	// alertCloseNotify record.
 	closeNotifySent bool
-
-	// closed tracks conn closure state
-	closed   atomic.Bool
-	closeErr error
+	closeErr        error
 
 	// deadlines
-	readDeadline  time.Time
-	writeDeadline time.Time
+	readDeadline      time.Time
+	writeDeadline     time.Time
+	handshakeDeadline time.Time
 
 	// logger
 	logger *log.Logger
@@ -41,60 +44,118 @@ type Conn struct {
 	enableTrace bool
 }
 
+var (
+	opRead      = "read"
+	opWrite     = "write"
+	opShutdown  = "close"
+	opHandshake = "handshake"
+)
+
+type opFunc func([]byte) (int, error)
+
 func (c *Conn) trace(msg string) {
 	if !c.enableTrace {
 		return
 	}
 	c.logger.Printf(
 		"%s %-40s %-20s %-20s %-5s",
-		"[SSLConn]",
+		"[fipstls.Conn]",
 		msg,
-		fmt.Sprintf("local=%+v", c.ssl.LocalAddr()),
-		fmt.Sprintf("remote=%+v", c.ssl.LocalAddr()),
-		fmt.Sprintf("conn=%+v", c.ssl.FD()),
+		fmt.Sprintf("local=%+v", c.bio.LocalAddr()),
+		fmt.Sprintf("remote=%+v", c.bio.LocalAddr()),
+		fmt.Sprintf("conn=%+v", c.bio.FD()),
 	)
 }
 
-var (
-	opRead      = "read"
-	opWrite     = "write"
-	opClose     = "close"
-	opHandshake = "handshake"
-)
-
-type opFunc func([]byte) (int, error)
-
-// NewConn wraps a new [SSL] connection to the host with deadlines, state-tracking, debug tracing,
-// and concurrency and memory safety. It will free [SSL] resources on connection closure, and
-// optionally [SSLContext] resources if an ephemeral context was provided.
-func NewConn(ctx *SSLContext, bio *BIO, deadline time.Time, trace bool) (*Conn, error) {
+// NewConn creates a TLS [Conn] from a [Context] and [BIO].
+func NewConn(ctx *Context, bio *BIO, deadline time.Time, trace bool) (*Conn, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
-	ssl, err := NewSSL(ctx, bio)
+	ssl, err := libssl.NewSSL(ctx.Ctx())
 	if err != nil {
-		defer ssl.Close()
+		libssl.SSLFree(ssl)
 		return nil, err
 	}
-	c := &Conn{
-		ssl:         ssl,
-		ctx:         ctx,
-		localAddr:   ssl.LocalAddr(),
-		remoteAddr:  ssl.RemoteAddr(),
-		enableTrace: trace,
+	s := &Conn{
+		ssl:               ssl,
+		ctx:               ctx,
+		bio:               bio,
+		closer:            noopCloser{},
+		handshakeDeadline: deadline,
+		enableTrace:       trace,
 	}
-	if c.enableTrace {
-		c.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
-	}
-	// Dialer deadline
-	if _, err := c.doIO(nil, opHandshake); err != nil {
+	if err := s.configureBIO(s.bio); err != nil {
+		libssl.SSLFree(s.ssl)
 		return nil, err
 	}
-	c.trace("New conn")
-	return c, nil
+	s.closer = &onceCloser{
+		closeFunc: func() error {
+			s.closed.Store(true)
+			return libssl.SSLFree(s.ssl)
+		},
+	}
+	if s.enableTrace {
+		s.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
+	}
+	s.trace("New conn")
+	return s, nil
 }
 
-// Read will read bytes into the buffer from the [SSL] connection, wrapped in an optional deadline.
+func (s *Conn) configureBIO(b *BIO) error {
+	s.bio = b
+	if err := libssl.SSLConfigureBIO(s.ssl, b.BIO(), b.Hostname()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Conn) connect() error {
+	err := libssl.SSLConnect(s.ssl)
+	if err == nil {
+		return err
+	}
+	if err := libssl.SSLGetVerifyResult(s.ssl); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Connect initiates a TLS handshake with the peer.
+func (s *Conn) Connect() error {
+	s.trace("Write begin")
+	defer s.trace("Write end")
+	_, err := s.doIO(nil, opHandshake)
+	return err
+}
+
+// LocalAddr returns the local address if known.
+func (s *Conn) LocalAddr() net.Addr {
+	return s.bio.LocalAddr()
+}
+
+// RemoteAddr returns the peer address if known.
+func (s *Conn) RemoteAddr() net.Addr {
+	return s.bio.RemoteAddr()
+}
+
+// Read will read bytes into the buffer from the [Conn] connection.
+func (s *Conn) read(b []byte) (int, error) {
+	if s.closer.Err() != nil {
+		return 0, s.closer.Err()
+	}
+	r, n, err := libssl.SSLReadEx(s.ssl, int64(len(b)))
+	if err != nil {
+		if err := libssl.SSLGetVerifyResult(s.ssl); err != nil {
+			return n, err
+		}
+		return n, err
+	}
+	copy(b, r[:n])
+	return n, nil
+}
+
+// Read will read bytes into the buffer from the [Conn] connection, wrapped in an optional deadline.
 func (c *Conn) Read(b []byte) (int, error) {
 	c.trace("Read begin")
 	defer c.trace("Read end")
@@ -107,7 +168,17 @@ func (c *Conn) Read(b []byte) (int, error) {
 	return c.doIO(b, opRead)
 }
 
-// Write will write bytes from the buffer to the [SSL] connection, wrapped in an optional deadline.
+// Write will write bytes from the buffer to the [Conn] connection.
+func (s *Conn) write(b []byte) (int, error) {
+	if s.closed.Load() {
+		return 0, s.closer.Err()
+	}
+	return libssl.SSLWriteEx(s.ssl, b)
+}
+
+var ErrShutdown = errors.New("fipstls: protocol is shutdown")
+
+// Write will write bytes from the buffer to the [Conn] connection, wrapped in an optional deadline.
 func (c *Conn) Write(b []byte) (int, error) {
 	c.trace("Write begin")
 	defer c.trace("Write end")
@@ -119,8 +190,23 @@ func (c *Conn) Write(b []byte) (int, error) {
 	return c.doIO(b, opWrite)
 }
 
-// Close will attempt to cleanly shutdown the [SSL] connection and free [SSL] and optionally
-// [SSLContext] resources if a non-empty context was provided.
+// Shutdown will send a close-notify alert to the peer to gracefully shutdown
+// the [Conn] connection.
+func (s *Conn) shutdown() error {
+	if s.closed.Load() {
+		return s.closer.Err()
+	}
+	return libssl.SSLShutdown(s.ssl)
+}
+
+// close frees the [libssl.SSL] C object allocated for [Conn].
+func (s *Conn) close() error {
+	defer s.ctx.Close()
+	return s.closer.Close()
+}
+
+// Close will attempt to cleanly shutdown the [Conn] connection and free [Conn] and optionally
+// [Context] resources if a non-empty context was provided.
 func (c *Conn) Close() error {
 	c.trace("Close begin")
 	defer c.trace("Close end")
@@ -135,11 +221,8 @@ func (c *Conn) closeNotify() error {
 	if !c.closeNotifySent {
 		// Set a Write Deadline to prevent possibly blocking forever.
 		c.SetWriteDeadline(time.Now().Add(time.Second * 5))
-		_, c.closeErr = c.doIO(nil, opClose)
-		defer func() {
-			c.ssl.Close()
-			c.ctx.Close()
-		}()
+		_, c.closeErr = c.doIO(nil, opShutdown)
+		defer c.close()
 		c.closeNotifySent = true
 		c.closed.Store(true)
 		// Any subsequent writes will fail.
@@ -148,17 +231,7 @@ func (c *Conn) closeNotify() error {
 	return c.closeErr
 }
 
-// LocalAddr returns the local network address, if known.
-func (c *Conn) LocalAddr() net.Addr {
-	return c.localAddr
-}
-
-// RemoteAddr returns the remote network address, if known.
-func (c *Conn) RemoteAddr() net.Addr {
-	return c.remoteAddr
-}
-
-// SetDeadline sets the read and write deadlines of the [SSL] connection.
+// SetDeadline sets the read and write deadlines of the [Conn] connection.
 func (c *Conn) SetDeadline(t time.Time) error {
 	if err := c.SetReadDeadline(t); err != nil {
 		return err
@@ -195,15 +268,16 @@ func (c *Conn) doIO(b []byte, opKind string) (int, error) {
 	switch opKind {
 	case opRead:
 		d = c.readDeadline
-		op = c.ssl.Read
+		op = c.read
 	case opWrite:
 		d = c.writeDeadline
-		op = c.ssl.Write
-	case opHandshake:
-		op = func([]byte) (int, error) { return 0, c.ssl.Connect() }
-	case opClose:
+		op = c.write
+	case opShutdown:
 		d = c.writeDeadline
-		op = func([]byte) (int, error) { return 0, c.ssl.Shutdown() }
+		op = func([]byte) (int, error) { return 0, c.shutdown() }
+	case opHandshake:
+		d = c.handshakeDeadline
+		op = func([]byte) (int, error) { return 0, c.connect() }
 	}
 
 	for {
@@ -226,18 +300,18 @@ func (c *Conn) doIO(b []byte, opKind string) (int, error) {
 				continue
 			case libssl.SSL_ERROR_ZERO_RETURN:
 				c.trace(fmt.Sprintf("%v doIO return zero", opKind))
-				return 0, io.EOF
+				return result, io.EOF
 			case libssl.SSL_ERROR_SSL:
-				if opKind == opClose {
+				if opKind == opShutdown {
 					// if we got an SSL_ERROR_SSL during a second shutdown, that means the peer
 					// did not do a clean shutdown.
 					c.trace(fmt.Sprintf("%s doIO forced closed", opKind))
+					// we're ignoring this
+					return result, nil
 				}
-				// we're ignoring this
-				return 0, nil
 			default:
 				c.trace(fmt.Sprintf("%v doIO error: %v", opKind, err))
-				return 0, newConnError(opKind, c.remoteAddr, err)
+				return result, newConnError(opKind, c.remoteAddr, err)
 			}
 		}
 	}

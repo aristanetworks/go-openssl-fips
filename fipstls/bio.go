@@ -8,7 +8,7 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
-// BIO is the basic I/O abstraction used by [SSL] for reading from and writing to sockets.
+// BIO is the basic I/O abstraction used by [Conn] for reading from and writing to sockets.
 type BIO struct {
 	bio        *libssl.BIO
 	closer     Closer

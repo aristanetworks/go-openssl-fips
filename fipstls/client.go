@@ -5,12 +5,16 @@ import (
 )
 
 // NewClient returns an [http.Client] with [Transport] that uses [Dialer] to
-// create [SSL] connections configured by [SSLContext]. The [SSLContext] should
+// create [Conn] connections configured by [Context]. The [Context] should
 // not be nil.
-func NewClient(c *SSLContext, opts ...DialerOption) *http.Client {
+func NewClient(c *Context, opts ...DialerOption) (*http.Client, error) {
+	d, err := NewDialer(c, opts...)
+	if err != nil {
+		return nil, err
+	}
 	return &http.Client{
 		Transport: &Transport{
-			Dialer: NewDialer(c, opts...),
+			Dialer: d,
 		},
-	}
+	}, nil
 }

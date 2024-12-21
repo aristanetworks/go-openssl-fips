@@ -25,7 +25,10 @@ func TestSSLClientGet(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
 
-	client := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	trace := &httptrace.ClientTrace{
 		TLSHandshakeStart: func() {
@@ -96,7 +99,10 @@ func TestSSLClientPost(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
 
-	client := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -143,9 +149,10 @@ func TestSSLClientPostTrace(t *testing.T) {
 	ts := testutils.NewServer(t)
 	defer ts.Close()
 
-	client := fipstls.NewClient(
-		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-		fipstls.WithDialTimeout(10*time.Second))
+	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -190,7 +197,10 @@ func TestSSLClientPostTrace(t *testing.T) {
 func TestRoundTripSSL(t *testing.T) {
 	t.Skip("local testing only")
 	defer testutils.LeakCheckLSAN(t)
-	client := fipstls.NewClient(fipstls.NewCtx(), fipstls.WithDialTimeout(10*time.Second))
+	client, err := fipstls.NewClient(fipstls.NewCtx(), fipstls.WithDialTimeout(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add HTTP trace for debugging
 	trace := &httptrace.ClientTrace{
@@ -261,7 +271,10 @@ type Progress struct {
 
 func TestStreamJSON(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	client := fipstls.NewClient(fipstls.NewCtx())
+	client, err := fipstls.NewClient(fipstls.NewCtx())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name          string

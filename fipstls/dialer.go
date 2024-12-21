@@ -2,6 +2,7 @@ package fipstls
 
 import (
 	"context"
+	"errors"
 	"net"
 	"syscall"
 	"time"
@@ -9,10 +10,10 @@ import (
 
 var DefaultNetwork = "tcp4"
 
-// Dialer is used for dialing [SSL] connections.
+// Dialer is used for dialing [Conn] connections.
 type Dialer struct {
-	// Ctx is the [SSLContext] that will be used for creating [SSL] connections.
-	Ctx *SSLContext
+	// Ctx is the [SSLContext] that will be used for creating [Conn] connections.
+	Ctx *Context
 
 	// Timeout is the maximum amount of time a dial will wait for
 	// a connect to complete. If Deadline is also set, it may fail
@@ -61,20 +62,22 @@ func WithConnTracingEnabled() DialerOption {
 	}
 }
 
+var ErrEmptyContext = errors.New("fipstls: cannot create fipstls.Dialer from nil fipstls.Context")
+
 // NewDialer is returns a [Dialer] configured with [DialerOption]. The
-// [SSLContext] should not be nil.
-func NewDialer(ctx *SSLContext, opts ...DialerOption) *Dialer {
+// [Context] should not be nil.
+func NewDialer(ctx *Context, opts ...DialerOption) (*Dialer, error) {
 	if ctx == nil {
-		panic("cannot create Dialer from nil SSLContext")
+		return nil, ErrEmptyContext
 	}
 	d := &Dialer{Ctx: ctx}
 	for _, o := range opts {
 		o(d)
 	}
-	return d
+	return d, nil
 }
 
-// DialContext specifies a dial function for creating [SSL] connections.
+// DialContext specifies a dial function for creating [Conn] connections.
 // The network must be one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or
 // "unix".
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -92,11 +95,14 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 	return d.newConn(bio)
 }
 
-// NewGrpcDialFn returns a dialer function for grpc to create [SSL] connections.
-// The [SSLContext] should not be nil.
-func NewGrpcDialFn(sslCtx *SSLContext, network string, opts ...DialerOption) func(context.Context,
-	string) (net.Conn, error) {
-	d := NewDialer(sslCtx, opts...)
+// NewGrpcDialFn returns a dialer function for grpc to create [Conn] connections.
+// The [Context] should not be nil.
+func NewGrpcDialFn(sslCtx *Context, network string, opts ...DialerOption) (func(context.Context,
+	string) (net.Conn, error), error) {
+	d, err := NewDialer(sslCtx, opts...)
+	if err != nil {
+		return nil, err
+	}
 	if network == "" {
 		network = DefaultNetwork
 	}
@@ -110,7 +116,7 @@ func NewGrpcDialFn(sslCtx *SSLContext, network string, opts ...DialerOption) fun
 			return nil, err
 		}
 		return d.newConn(bio)
-	}
+	}, nil
 }
 
 func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error) {
@@ -133,6 +139,7 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 	}
 	ch := make(chan bioResult)
 	go func() {
+		// create non-blocking BIO
 		b, err := NewBIO(addr, family, 1)
 		ch <- bioResult{b, err}
 	}()
@@ -169,7 +176,7 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 	}
 	conn, err := NewConn(ctx, bio, d.Deadline, d.ConnTraceEnabled)
 	if err != nil {
-		ctx.Close()
+		conn.Close()
 		return nil, err
 	}
 	return conn, nil

@@ -306,7 +306,7 @@ func SSLPending(ssl *SSL) int {
 	return int(C.go_openssl_SSL_pending(ssl.inner))
 }
 
-// SSLGetShutdown returns the shutdown mode of [SSL].
+// SSLGetShutdown returns the shutdown mode of [Conn].
 func SSLGetShutdown(ssl *SSL) int {
 	if ssl == nil {
 		return C.GO_SSL_RECEIVED_SHUTDOWN
@@ -314,7 +314,7 @@ func SSLGetShutdown(ssl *SSL) int {
 	return int(C.go_openssl_SSL_get_shutdown(ssl.inner))
 }
 
-// SSLSetShutdown sets the shutdown state of [SSL] to mode.
+// SSLSetShutdown sets the shutdown state of [Conn] to mode.
 func SSLSetShutdown(ssl *SSL, mode int) error {
 	if ssl == nil {
 		return newOpenSSLError("libssl: SSL_set_shutdown: SSL is nil")

@@ -20,10 +20,12 @@ func TestTransportConcurrency(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("SSL Transport", func(t *testing.T) {
-		client := fipstls.NewClient(
+		client, err := fipstls.NewClient(
 			fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-			fipstls.WithConnTracingEnabled(),
-		)
+			fipstls.WithConnTracingEnabled())
+		if err != nil {
+			t.Fatal(err)
+		}
 		createRequests(t, ts, client)
 	})
 
