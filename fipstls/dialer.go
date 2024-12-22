@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"time"
+
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 var DefaultNetwork = "tcp4"
@@ -115,6 +117,8 @@ func NewGrpcDialFn(sslCtx *Context, opts ...DialerOption) (func(context.Context,
 	if err != nil {
 		return nil, err
 	}
+	// Set H2 as the protocol
+	sslCtx.TLS.NextProto = ALPNProtoH2Only
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		bio, err := d.dialBIO(ctx, d.Network, addr)
 		if err != nil {
@@ -172,6 +176,7 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		conn.Close()
 		return nil, err
 	}
+	conn.trace("Post-Handshake negotiated protocols:" + libssl.SSLALPNStatus(conn.ssl))
 	return conn, nil
 }
 

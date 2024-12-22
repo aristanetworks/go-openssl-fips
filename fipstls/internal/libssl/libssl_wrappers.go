@@ -14,7 +14,7 @@ type SSLMethod struct {
 func NewTLSMethod() (*SSLMethod, error) {
 	r := C.go_openssl_TLS_method()
 	if r == nil {
-		return nil, newOpenSSLError("libssl: TLS_method")
+		return nil, NewOpenSSLError("libssl: TLS_method")
 	}
 	return &SSLMethod{inner: r}, nil
 }
@@ -22,7 +22,7 @@ func NewTLSMethod() (*SSLMethod, error) {
 func NewTLSClientMethod() (*SSLMethod, error) {
 	r := C.go_openssl_TLS_client_method()
 	if r == nil {
-		return nil, newOpenSSLError("libssl: TLS_client_method")
+		return nil, NewOpenSSLError("libssl: TLS_client_method")
 	}
 	return &SSLMethod{inner: r}, nil
 }
@@ -30,7 +30,7 @@ func NewTLSClientMethod() (*SSLMethod, error) {
 func NewTLSServerMethod() (*SSLMethod, error) {
 	r := C.go_openssl_TLS_server_method()
 	if r == nil {
-		return nil, newOpenSSLError("libssl: TLS_server_method")
+		return nil, NewOpenSSLError("libssl: TLS_server_method")
 	}
 	return &SSLMethod{inner: r}, nil
 }
@@ -50,18 +50,36 @@ type SSLCtx struct {
 
 func NewSSLCtx(tlsMethod *SSLMethod) (*SSLCtx, error) {
 	if tlsMethod == nil {
-		return nil, newOpenSSLError("libssl: SSL_CTX_new: SSL_method is nil")
+		return nil, NewOpenSSLError("libssl: SSL_CTX_new: SSL_method is nil")
 	}
 	r := C.go_openssl_SSL_CTX_new(tlsMethod.inner)
 	if r == nil {
-		return nil, newOpenSSLError("libssl: SSL_CTX_new")
+		return nil, NewOpenSSLError("libssl: SSL_CTX_new")
 	}
 	return &SSLCtx{inner: r}, nil
 }
 
+func SSLCtxSetH2Proto(sslCtx *SSLCtx) error {
+	if r := C.go_openssl_set_h2_alpn(sslCtx.inner); r != 0 {
+		return NewOpenSSLError("libssl: SSL_CTX_set_alpn_protos: could not set H2 protocol")
+	}
+	return nil
+}
+
+func SSLALPNStatus(ssl *SSL) string {
+	var proto [256]C.char
+	var length C.int
+
+	ret := C.check_alpn_status(ssl.inner, &proto[0], &length)
+	if ret == 0 {
+		return "no protocol selected"
+	}
+	return string(C.GoBytes(unsafe.Pointer(&proto[0]), length))
+}
+
 func SSLCtxFree(sslCtx *SSLCtx) error {
 	if sslCtx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_free: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_free: SSL_CTX is nil")
 	}
 	C.go_openssl_SSL_CTX_free(sslCtx.inner)
 	return nil
@@ -70,7 +88,7 @@ func SSLCtxFree(sslCtx *SSLCtx) error {
 // SSLCtxSetReadAhead
 func SSLCtxSetReadAhead(ctx *SSLCtx, yes int) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_set_read_ahead: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_set_read_ahead: SSL_CTX is nil")
 	}
 	C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_SET_READ_AHEAD, C.long(yes), nil)
 	return nil
@@ -78,12 +96,12 @@ func SSLCtxSetReadAhead(ctx *SSLCtx, yes int) error {
 
 func SSLCtxSetMaxProtoVersion(ctx *SSLCtx, version int64) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_set_min_proto_version: SSL_CTX is nil")
 	}
 	if versionAtOrAbove(1, 1, 0) {
 		r := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_SET_MAX_PROTO_VERSION, C.long(version), nil)
 		if r != 1 {
-			return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version")
+			return NewOpenSSLError("libssl: SSL_CTX_set_min_proto_version")
 		}
 		return nil
 	}
@@ -93,12 +111,12 @@ func SSLCtxSetMaxProtoVersion(ctx *SSLCtx, version int64) error {
 
 func SSLCtxSetMinProtoVersion(ctx *SSLCtx, version int64) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_set_min_proto_version: SSL_CTX is nil")
 	}
 	if versionAtOrAbove(1, 1, 0) {
 		r := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_SET_MIN_PROTO_VERSION, C.long(version), nil)
 		if r != 1 {
-			return newOpenSSLError("libssl: SSL_CTX_set_min_proto_version")
+			return NewOpenSSLError("libssl: SSL_CTX_set_min_proto_version")
 		}
 		return nil
 	}
@@ -119,37 +137,37 @@ func SSLCtxSetMinProtoVersion(ctx *SSLCtx, version int64) error {
 
 func SSLCtxSetOptions(ctx *SSLCtx, options int64) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_set_options: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_set_options: SSL_CTX is nil")
 	}
 	// get options call
 	oldMask := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_OPTIONS, C.long(0), nil)
 	newMask := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_OPTIONS, C.long(options), nil)
 	if oldMask != 0 && oldMask == newMask {
-		return newOpenSSLError("libssl: SSL_CTX_set_options")
+		return NewOpenSSLError("libssl: SSL_CTX_set_options")
 	}
 	return nil
 }
 
 func SSLCtxSetMode(ctx *SSLCtx, mode int64) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_set_mode: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_set_mode: SSL_CTX is nil")
 	}
 	if versionAtOrAbove(1, 1, 0) {
 		oldMask := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_MODE, 0, nil)
 		newMask := C.go_openssl_SSL_CTX_ctrl(ctx.inner, C.GO_SSL_CTRL_MODE, C.long(mode), nil)
 		if oldMask != 0 && oldMask == newMask {
-			return newOpenSSLError("libssl: SSL_CTX_set_mode")
+			return NewOpenSSLError("libssl: SSL_CTX_set_mode")
 		}
 	}
-	return newOpenSSLError("libssl: SSL_CTX_set_mode not implemented for OpenSSL < 1.1.1")
+	return NewOpenSSLError("libssl: SSL_CTX_set_mode not implemented for OpenSSL < 1.1.1")
 }
 
 func SSLCtxSetDefaultVerifyPaths(ctx *SSLCtx) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_set_default_verify_paths: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_set_default_verify_paths: SSL_CTX is nil")
 	}
 	if r := int(C.go_openssl_SSL_CTX_set_default_verify_paths(ctx.inner)); r != 1 {
-		return newOpenSSLError("libssl: SSL_CTX_set_default_verify_paths")
+		return NewOpenSSLError("libssl: SSL_CTX_set_default_verify_paths")
 	}
 	return nil
 }
@@ -161,14 +179,14 @@ func SSLCtxSetDefaultVerifyPaths(ctx *SSLCtx) error {
 // CAfile, then those in CApath.
 func SSLCtxLoadVerifyLocations(ctx *SSLCtx, caFile, caPath string) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_load_verify_locations: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_load_verify_locations: SSL_CTX is nil")
 	}
 	cFile := C.CString(caFile)
 	cPath := C.CString(caPath)
 	defer C.free(unsafe.Pointer(cFile))
 	defer C.free(unsafe.Pointer(cPath))
 	if r := int(C.go_openssl_SSL_CTX_load_verify_locations(ctx.inner, cFile, cPath)); r != 1 {
-		return newOpenSSLError("libssl: SSL_CTX_load_verify_locations")
+		return NewOpenSSLError("libssl: SSL_CTX_load_verify_locations")
 	}
 	return nil
 }
@@ -179,7 +197,7 @@ type SSLVerifyCallback struct {
 
 func SSLCtxSetVerify(ctx *SSLCtx, mode int, callback SSLVerifyCallback) error {
 	if ctx == nil {
-		return newOpenSSLError("libssl: SSL_CTX_set_verify: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_CTX_set_verify: SSL_CTX is nil")
 	}
 	C.go_openssl_SSL_CTX_set_verify(ctx.inner, C.int(mode), callback.inner)
 	return nil
@@ -193,18 +211,18 @@ type SSL struct {
 
 func NewSSL(sslCtx *SSLCtx) (*SSL, error) {
 	if sslCtx == nil {
-		return nil, newOpenSSLError("libssl: SSL_new: SSL_CTX is nil")
+		return nil, NewOpenSSLError("libssl: SSL_new: SSL_CTX is nil")
 	}
 	r := C.go_openssl_SSL_new(sslCtx.inner)
 	if r == nil {
-		return nil, newOpenSSLError("libssl: SSL_new")
+		return nil, NewOpenSSLError("libssl: SSL_new")
 	}
 	return &SSL{inner: r}, nil
 }
 
 func SSLFree(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_clear: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_clear: SSL is nil")
 	}
 	C.go_openssl_SSL_free(ssl.inner)
 	return nil
@@ -212,7 +230,7 @@ func SSLFree(ssl *SSL) error {
 
 func SSLClear(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_clear: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_clear: SSL is nil")
 	}
 	C.go_openssl_SSL_clear(ssl.inner)
 	return nil
@@ -220,30 +238,30 @@ func SSLClear(ssl *SSL) error {
 
 func SetSSLFd(ssl *SSL, fd int) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_fd: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_fd: SSL is nil")
 	}
 	if r := C.go_openssl_SSL_set_fd(ssl.inner, C.int(fd)); r != 1 {
-		return newOpenSSLError("libssl: SSL_set_fd")
+		return NewOpenSSLError("libssl: SSL_set_fd")
 	}
 	return nil
 }
 
 func SetSSLReadWriteFd(ssl *SSL, rfd int, wfd int) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_fd: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_fd: SSL is nil")
 	}
 	if r := C.go_openssl_SSL_set_rfd(ssl.inner, C.int(rfd)); r != 1 {
-		return newOpenSSLError("libssl: SSL_set_rfd")
+		return NewOpenSSLError("libssl: SSL_set_rfd")
 	}
 	if r := C.go_openssl_SSL_set_wfd(ssl.inner, C.int(wfd)); r != 1 {
-		return newOpenSSLError("libssl: SSL_set_wfd")
+		return NewOpenSSLError("libssl: SSL_set_wfd")
 	}
 	return nil
 }
 
 func SSLConnect(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_connect: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_connect: SSL is nil")
 	}
 	if r := C.go_openssl_SSL_connect(ssl.inner); r != 1 {
 		return newSSLError("libssl: SSL_connect", SSLGetError(ssl, int(r)))
@@ -253,7 +271,7 @@ func SSLConnect(ssl *SSL) error {
 
 func SSLDoHandshake(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_do_handshake: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_do_handshake: SSL is nil")
 	}
 	if r := C.go_openssl_SSL_do_handshake(ssl.inner); r != 1 {
 		return newSSLError("libssl: SSL_connect", SSLGetError(ssl, int(r)))
@@ -263,7 +281,7 @@ func SSLDoHandshake(ssl *SSL) error {
 
 func SSLSetConnectState(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_connect_state: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_connect_state: SSL is nil")
 	}
 	C.go_openssl_SSL_set_connect_state(ssl.inner)
 	return nil
@@ -271,7 +289,7 @@ func SSLSetConnectState(ssl *SSL) error {
 
 func SSLSetAcceptState(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_accept_state: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_accept_state: SSL is nil")
 	}
 	C.go_openssl_SSL_set_accept_state(ssl.inner)
 	return nil
@@ -281,7 +299,7 @@ func SSLSetAcceptState(ssl *SSL) error {
 // the peer.
 func SSLShutdown(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_shutdown: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_shutdown: SSL is nil")
 	}
 	r := int(C.go_openssl_SSL_shutdown(ssl.inner))
 	switch r {
@@ -299,11 +317,18 @@ func SSLShutdown(ssl *SSL) error {
 }
 
 // SSLPending
-func SSLPending(ssl *SSL) int {
-	if ssl != nil {
-		return 0
+func SSLPending(ssl *SSL) bool {
+	if ssl == nil {
+		return false
 	}
-	return int(C.go_openssl_SSL_pending(ssl.inner))
+	return int(C.go_openssl_SSL_pending(ssl.inner)) != 0
+}
+
+func SSLHasPending(ssl *SSL) bool {
+	if ssl == nil {
+		return false
+	}
+	return int(C.go_openssl_SSL_has_pending(ssl.inner)) == 1
 }
 
 // SSLGetShutdown returns the shutdown mode of [Conn].
@@ -317,7 +342,7 @@ func SSLGetShutdown(ssl *SSL) int {
 // SSLSetShutdown sets the shutdown state of [Conn] to mode.
 func SSLSetShutdown(ssl *SSL, mode int) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_shutdown: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_shutdown: SSL is nil")
 	}
 	C.go_openssl_SSL_set_shutdown(ssl.inner, C.int(mode))
 	return nil
@@ -325,7 +350,7 @@ func SSLSetShutdown(ssl *SSL, mode int) error {
 
 func SSLWriteEx(ssl *SSL, req []byte) (int, error) {
 	if ssl == nil {
-		return 0, newOpenSSLError("libssl: SSL_write_ex: SSL is nil")
+		return 0, NewOpenSSLError("libssl: SSL_write_ex: SSL is nil")
 	}
 	cBytes := C.CBytes(req)
 	defer C.free(cBytes)
@@ -351,7 +376,7 @@ func SSLWriteEx(ssl *SSL, req []byte) (int, error) {
 
 func SSLReadEx(ssl *SSL, size int64) ([]byte, int, error) {
 	if ssl == nil {
-		return nil, 0, newOpenSSLError("libssl: SSL_read_ex: SSL is nil")
+		return nil, 0, NewOpenSSLError("libssl: SSL_read_ex: SSL is nil")
 	}
 	cBuf := C.malloc(C.size_t(size))
 	defer C.free(cBuf)
@@ -380,47 +405,47 @@ func SSLReadEx(ssl *SSL, size int64) ([]byte, int, error) {
 
 func SSLWrite(ssl *SSL, req []byte) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_write: SSL_CTX is nil")
+		return NewOpenSSLError("libssl: SSL_write: SSL_CTX is nil")
 	}
 	cBytes := C.CBytes(req)
 	defer C.free(cBytes)
 	r := C.go_openssl_SSL_write(ssl.inner, cBytes, C.int(len(req)))
 	if r <= 0 {
-		return newOpenSSLError("libssl: SSL_write")
+		return NewOpenSSLError("libssl: SSL_write")
 	}
 	return nil
 }
 
 func SSLRead(ssl *SSL, size int64) ([]byte, error) {
 	if ssl == nil {
-		return nil, newOpenSSLError("libssl: SSL_read: SSL_CTX is nil")
+		return nil, NewOpenSSLError("libssl: SSL_read: SSL_CTX is nil")
 	}
 	cBuf := C.malloc(C.size_t(size))
 	defer C.free(cBuf)
 	r := C.go_openssl_SSL_read(ssl.inner, cBuf, C.int(size))
 	if r <= 0 {
-		return nil, newOpenSSLError("libssl: SSL_read")
+		return nil, NewOpenSSLError("libssl: SSL_read")
 	}
 	return C.GoBytes(cBuf, r), nil
 }
 
 func SSLSetMode(ssl *SSL, mode int64) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_mode: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_mode: SSL is nil")
 	}
 	if versionAtOrAbove(1, 1, 0) {
 		oldMask := C.go_openssl_SSL_ctrl(ssl.inner, C.GO_SSL_CTRL_MODE, 0, nil)
 		newMask := C.go_openssl_SSL_ctrl(ssl.inner, C.GO_SSL_CTRL_MODE, C.long(mode), nil)
 		if oldMask != 0 && oldMask == newMask {
-			return newOpenSSLError("libssl: SSL_set_mode")
+			return NewOpenSSLError("libssl: SSL_set_mode")
 		}
 	}
-	return newOpenSSLError("libssl: SSL_set_mode not implemented for OpenSSL < 1.1.1")
+	return NewOpenSSLError("libssl: SSL_set_mode not implemented for OpenSSL < 1.1.1")
 }
 
 func SSLSet1Host(ssl *SSL, hostname string) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set1_host: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set1_host: SSL is nil")
 	}
 	if versionAtOrAbove(1, 1, 0) {
 		cHostname := C.CString(hostname)
@@ -443,10 +468,10 @@ func SSLSet1Host(ssl *SSL, hostname string) error {
 
 func SSLSet1Param(ssl *SSL, param *X509VerifyParam) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_free: SSL is nil")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_free: SSL is nil")
 	}
 	if param == nil {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_free: X509_VERIFY_PARAM is nil")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_free: X509_VERIFY_PARAM is nil")
 	}
 	if r := C.go_openssl_SSL_set1_param(ssl.inner, param.inner); r != 1 {
 		return newSSLError("libssl: SSL_set1_param", SSLGetError(ssl, int(r)))
@@ -457,7 +482,7 @@ func SSLSet1Param(ssl *SSL, param *X509VerifyParam) error {
 func SSLGet0Param(ssl *SSL) (*X509VerifyParam, error) {
 	param := C.go_openssl_SSL_get0_param(ssl.inner)
 	if param == nil {
-		return nil, newOpenSSLError("libssl: SSL_get0_param: X509_VERIFY_PARAM is nil")
+		return nil, NewOpenSSLError("libssl: SSL_get0_param: X509_VERIFY_PARAM is nil")
 	}
 	return &X509VerifyParam{inner: param}, nil
 }
@@ -473,7 +498,7 @@ func NewX509VerifyParam() *X509VerifyParam {
 
 func X509VerifyParamFree(param *X509VerifyParam) error {
 	if param == nil {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_free: X509_VERIFY_PARAM is nil")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_free: X509_VERIFY_PARAM is nil")
 	}
 	C.go_openssl_X509_VERIFY_PARAM_free(param.inner)
 	return nil
@@ -483,11 +508,11 @@ func X509VerifyParamFree(param *X509VerifyParam) error {
 // This function is only available in OpenSSL versions prior to 1.1.0.
 func X509VerifyParamSetFlags(param *X509VerifyParam, flags int64) error {
 	if param == nil {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags: X509_VERIFY_PARAM is nil")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags: X509_VERIFY_PARAM is nil")
 	}
 	result := C.go_openssl_X509_VERIFY_PARAM_set_flags(param.inner, C.long(flags))
 	if result != 1 {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_set_flags")
 	}
 	return nil
 }
@@ -496,7 +521,7 @@ func X509VerifyParamSetFlags(param *X509VerifyParam, flags int64) error {
 // This function is only available in OpenSSL versions prior to 1.1.0.
 func X509VerifyParamSet1Host(param *X509VerifyParam, hostname string) error {
 	if param == nil {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host: X509_VERIFY_PARAM is nil")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host: X509_VERIFY_PARAM is nil")
 	}
 	if versionAtOrAbove(1, 1, 0) {
 		return fmt.Errorf("libssl: X509_VERIFY_PARAM_set1_host is not available in OpenSSL 1.1.0 and later")
@@ -510,7 +535,7 @@ func X509VerifyParamSet1Host(param *X509VerifyParam, hostname string) error {
 		cHostname,
 		C.size_t(len(hostname)))
 	if result != 1 {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host")
 	}
 	return nil
 }
@@ -520,7 +545,7 @@ func X509VerifyParamSet1Host(param *X509VerifyParam, hostname string) error {
 // and SSL_set1_host for newer versions.
 func SSLSetHostFlags(ssl *SSL, hostname string, flags int64) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host: SSL is nil")
+		return NewOpenSSLError("libssl: X509_VERIFY_PARAM_set1_host: SSL is nil")
 	}
 	if vMajor == 3 || vMajor >= 1 && vMinor >= 1 {
 		return SSLSet1Host(ssl, hostname)
@@ -549,9 +574,11 @@ func SSLSetHostFlags(ssl *SSL, hostname string, flags int64) error {
 	return nil
 }
 
+// long SSL_CTX_set_tlsext_servername_callback(SSL_CTX *ctx, int (*cb)(SSL *, int *, void *));
+// long SSL_CTX_set_tlsext_servername_arg(SSL_CTX *ctx, void *arg);
 func SSLSetTLSExtHostName(ssl *SSL, name string) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_tlsext_hostname: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_tlsext_hostname: SSL is nil")
 	}
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
@@ -567,11 +594,11 @@ func SSLSetTLSExtHostName(ssl *SSL, name string) error {
 
 func SSLGetVerifyResult(ssl *SSL) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_get_verify_result: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_get_verify_result: SSL is nil")
 	}
 	res := int64(C.go_openssl_SSL_get_verify_result(ssl.inner))
 	if res != X509_V_OK {
-		return newOpenSSLError(fmt.Sprintf("libssl: SSL_get_verify_result: %s",
+		return NewOpenSSLError(fmt.Sprintf("libssl: SSL_get_verify_result: %s",
 			X509VerifyCertErrorString(res)))
 	}
 	return nil
@@ -595,32 +622,32 @@ type SSLSession struct {
 
 func SSLGetSession(ssl *SSL) (*SSLSession, error) {
 	if ssl == nil {
-		return nil, newOpenSSLError("libssl: SSL_get1_session: SSL is nil")
+		return nil, NewOpenSSLError("libssl: SSL_get1_session: SSL is nil")
 	}
 	r := C.go_openssl_SSL_get1_session(ssl.inner)
 	if r == nil {
-		return nil, newOpenSSLError("libssl: SSL_get1_session")
+		return nil, NewOpenSSLError("libssl: SSL_get1_session")
 	}
 	return &SSLSession{inner: r}, nil
 }
 
 func SSLSetSession(ssl *SSL, session *SSLSession) error {
 	if ssl == nil {
-		return newOpenSSLError("libssl: SSL_set_session: SSL is nil")
+		return NewOpenSSLError("libssl: SSL_set_session: SSL is nil")
 	}
 	if session == nil {
-		return newOpenSSLError("libssl: SSL_set_session: SSL_session is nil")
+		return NewOpenSSLError("libssl: SSL_set_session: SSL_session is nil")
 	}
 	r := int(C.go_openssl_SSL_set_session(ssl.inner, session.inner))
 	if r == 0 {
-		return newOpenSSLError("libssl: SSL_set_session")
+		return NewOpenSSLError("libssl: SSL_set_session")
 	}
 	return nil
 }
 
 func SSLSessionFree(session *SSLSession) error {
 	if session == nil {
-		return newOpenSSLError("libssl: SSL_SESSION_free: SSL_session is nil")
+		return NewOpenSSLError("libssl: SSL_SESSION_free: SSL_session is nil")
 	}
 	C.go_openssl_SSL_SESSION_free(session.inner)
 	return nil
@@ -628,10 +655,10 @@ func SSLSessionFree(session *SSLSession) error {
 
 func SSLDialHost(ssl *SSL, hostname, port string, family, mode int) (int, error) {
 	if ssl == nil {
-		return -1, newOpenSSLError("libssl: dial_host: SSL is nil")
+		return -1, NewOpenSSLError("libssl: dial_host: SSL is nil")
 	}
 	if !versionAtOrAbove(1, 1, 0) {
-		return -1, newOpenSSLError("libssl: dial_host: not implemented for OpenSSL < 1.1.1")
+		return -1, NewOpenSSLError("libssl: dial_host: not implemented for OpenSSL < 1.1.1")
 	}
 	cHost := C.CString(hostname)
 	cPort := C.CString(port)
@@ -662,7 +689,7 @@ func SSLConfigureSock(ssl *SSL, hostname string, sockfd int) error {
 
 func SSLGetFd(ssl *SSL) (int, error) {
 	if ssl == nil {
-		return 0, newOpenSSLError("libssl: SSL_get_fd: SSL is nil")
+		return 0, NewOpenSSLError("libssl: SSL_get_fd: SSL is nil")
 	}
 	r := C.go_openssl_SSL_get_fd(ssl.inner)
 	if r == -1 {
@@ -682,7 +709,7 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 	defer C.free(unsafe.Pointer(cPort))
 	bio := C.go_openssl_create_bio(cHost, cPort, C.int(family), C.int(mode))
 	if bio == nil {
-		return nil, -1, newOpenSSLError("libssl: create_bio")
+		return nil, -1, NewOpenSSLError("libssl: create_bio")
 	}
 	var sockfd C.int
 	if r := C.go_openssl_BIO_ctrl(
@@ -690,7 +717,7 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 		C.GO_BIO_C_GET_FD,
 		C.long(0),
 		unsafe.Pointer(&sockfd)); r == -1 {
-		return nil, -1, newOpenSSLError("libssl: create_bio: BIO not initialized")
+		return nil, -1, NewOpenSSLError("libssl: create_bio: BIO not initialized")
 	}
 	return &BIO{inner: bio}, int(sockfd), nil
 }
@@ -706,7 +733,7 @@ func SSLConfigureBIO(ssl *SSL, bio *BIO, hostname string) error {
 
 func BIOFree(bio *BIO) error {
 	if bio == nil {
-		return newOpenSSLError("libssl: BIO_free_all: BIO is nil")
+		return NewOpenSSLError("libssl: BIO_free_all: BIO is nil")
 	}
 	C.go_openssl_BIO_free_all(bio.inner)
 	return nil

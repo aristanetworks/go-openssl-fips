@@ -2,7 +2,6 @@ package fipstls_test
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,18 +25,6 @@ func TestTransportConcurrency(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		createRequests(t, ts, client)
-	})
-
-	t.Run("Default Transport", func(t *testing.T) {
-		client := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-		}
-
 		createRequests(t, ts, client)
 	})
 }

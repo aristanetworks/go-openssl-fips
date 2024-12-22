@@ -186,6 +186,21 @@ enum GO_BIO_CLOSE_FLAGS {
     GO_BIO_CLOSE   = 0x01   /* Close on free */
 };
 
+// SSL callback errors
+enum {
+    GO_SSL_TLSEXT_ERR_OK               = 0,
+    GO_SSL_TLSEXT_ERR_ALERT_WARNING    = 1,
+    GO_SSL_TLSEXT_ERR_ALERT_FATAL      = 2,
+    GO_SSL_TLSEXT_ERR_NOACK            = 3,
+};
+
+// NPN errors
+enum {
+    GO_OPENSSL_NPN_UNSUPPORTED = 0,
+    GO_OPENSSL_NPN_NEGOTIATED  = 1,
+    GO_OPENSSL_NPN_NO_OVERLAP  = 2,
+};
+
 typedef void* GO_OPENSSL_INIT_SETTINGS_PTR;
 typedef void* GO_OSSL_LIB_CTX_PTR;
 typedef void* GO_OSSL_PROVIDER_PTR;
@@ -296,6 +311,9 @@ DEFINEFUNC_1_1(int, SSL_write_ex, (GO_SSL_PTR s, const void *buf, size_t num, si
 DEFINEFUNC_1_1(int, SSL_read_ex, (GO_SSL_PTR s, void *buf, size_t num, size_t *readbytes), (s, buf, num, readbytes)) \
 /* SSL_CTX_ctrl is needed for SSL_CTX_set_min_proto_version */ \
 DEFINEFUNC(long, SSL_CTX_ctrl, (GO_SSL_CTX_PTR ctx, int cmd, long larg, void *parg), (ctx, cmd, larg, parg)) \
+DEFINEFUNC(int, SSL_CTX_set_alpn_protos, (GO_SSL_CTX_PTR ctx, const unsigned char *protos, unsigned protos_len), (ctx, protos, protos_len)) \
+DEFINEFUNC(int, SSL_select_next_proto, (unsigned char **out, unsigned char *outlen, const unsigned char *server, unsigned int server_len, const unsigned char *client, unsigned int client_len), (out, outlen, server, server_len, client, client_len)) \
+DEFINEFUNC(void, SSL_get0_alpn_selected, (const GO_SSL_PTR ssl, const unsigned char **data, unsigned int *len), (ssl, data, len)) \
 DEFINEFUNC(void, SSL_CTX_set_verify, (GO_SSL_CTX_PTR ctx, int mode, GO_SSL_verify_cb_PTR vb), (ctx, mode, vb)) \
 DEFINEFUNC(int, SSL_CTX_set_default_verify_paths, (GO_SSL_CTX_PTR ctx), (ctx)) \
 DEFINEFUNC(int, SSL_CTX_load_verify_locations, (GO_SSL_CTX_PTR ctx, const char *CAfile, const char *CApath), (ctx, CAfile, CApath)) \
@@ -339,6 +357,7 @@ DEFINEFUNC(long, BIO_int_ctrl, (GO_BIO_PTR bp, int cmd, long larg, int iarg), (b
 DEFINEFUNC(long, BIO_ctrl, (GO_BIO_PTR bp, int cmd, long larg, void *parg), (bp, cmd, larg, parg)) \
 DEFINEFUNC(void, BIO_free_all, (GO_BIO_PTR a), (a)) \
 DEFINEFUNC(int, SSL_pending, (GO_SSL_PTR ssl), (ssl)) \
+DEFINEFUNC(int, SSL_has_pending, (GO_SSL_PTR ssl), (ssl)) \
 
 // TODO int SSL_renegotiate_pending(const SSL *s);
 

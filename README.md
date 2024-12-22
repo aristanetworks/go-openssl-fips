@@ -51,7 +51,7 @@ This feature does not require any additional configuration, but it only works wi
 - Only Unix, Unix-like and Windows platforms are supported.
 - The build must set `CGO_ENABLED=1`.
 
-## Examples
+## Usage
 
 The [`fipstls.SSLContext`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSLContext) must be configured before the client or dialer can be used. The `fipstls.SSLContext` is responsible for initializing libssl and TLS configuration that will be used to create [`fipstls.Conn`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#SSLConn) connections.
 
@@ -127,7 +127,7 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewUnsafeCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewUnsafeCtx`, it's the caller's responsibility to close the `fipstls.SSLContext` using `fipstls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
 
 ### 3. Creating a Default Dialer
 
@@ -147,9 +147,9 @@ import (
 
 func main() {
 	// Create an fipstls.Dialer with the configured context
-	dialFn, err := fiptls.NewGrpcDialFn(
+	dialFn, err := fipstls.NewGrpcDialFn(
 		fipstls.NewCtx(fipstls.WithCaFile("/path/to/cert.pem")),
-		fipstls.WithTimeout(10 * time.Second))
+		fipstls.WithDialTimeout(10*time.Second))
 	if err != nil {
 		log.Fatalf("Failed to create grpc dialer: %v", err)
 	}
@@ -196,7 +196,7 @@ func main() {
 	}
 	// this will free the C memory allocated for the context
 	defer ctx.Close()
-	fipsDialFn, err := fiptls.NewGrpcDialFn(ctx, "tcp", fipstls.WithTimeout(10 * time.Second))
+	fipsDialFn, err := fipstls.NewGrpcDialFn(ctx, fipstls.WithTimeout(10 * time.Second))
 	if err != nil {
 		log.Fatalf("Failed to create grpc dialer: %v", err)
 	}
@@ -218,7 +218,7 @@ func main() {
 }
 ```
 
-**Note:** In the case of `NewUnsafeCtx`, it's the caller's responsibility to close the `fiptls.SSLContext` using `fiptls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
+**Note:** In the case of `NewUnsafeCtx`, it's the caller's responsibility to close the `fipstls.SSLContext` using `fipstls.SSLContext.Close` when it's no longer needed. This will free the associated C memory.
 
 ## Benchmarks
 

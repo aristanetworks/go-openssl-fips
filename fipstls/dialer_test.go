@@ -7,10 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net"
 	"net/url"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +25,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/stats"
 )
 
 func TestDialTimeout(t *testing.T) {
@@ -164,7 +169,6 @@ type testServer struct {
 
 // Server streaming implementation
 func (s *testServer) ServerStream(req *pb.Request, stream pb.YourService_ServerStreamServer) error {
-	s.t.Logf("ServerStream recv: %+v", req)
 	messages := []string{"msg1", "msg2", "msg3"}
 	for _, msg := range messages {
 		if err := stream.Send(&pb.Response{Message: msg}); err != nil {
@@ -176,7 +180,6 @@ func (s *testServer) ServerStream(req *pb.Request, stream pb.YourService_ServerS
 
 // Client streaming implementation
 func (s *testServer) ClientStream(stream pb.YourService_ClientStreamServer) error {
-	s.t.Log("ClientStream recv")
 	s.receivedMessages = []string{} // Reset for test
 	for {
 		msg, err := stream.Recv()
@@ -194,7 +197,6 @@ func (s *testServer) ClientStream(stream pb.YourService_ClientStreamServer) erro
 
 // Bidirectional streaming implementation
 func (s *testServer) BidiStream(stream pb.YourService_BidiStreamServer) error {
-	s.t.Log("BidiStream recv")
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -213,33 +215,68 @@ func (s *testServer) BidiStream(stream pb.YourService_BidiStreamServer) error {
 	}
 }
 
-func TestFIPSTLSDialerWithTLS(t *testing.T) {
-	t.Skip("Skipping...")
+type StatsHandler struct {
+	t *testing.T
+}
+
+func (h *StatsHandler) TagConn(ctx context.Context, info *stats.ConnTagInfo) context.Context {
+	// Connection established
+	return ctx
+}
+
+func (h *StatsHandler) HandleConn(ctx context.Context, s stats.ConnStats) {
+	// Can check connection state changes
+	switch s.(type) {
+	case *stats.ConnBegin:
+		// New connection
+		h.t.Logf("ConnBegin: %+v", s)
+	case *stats.ConnEnd:
+		// Connection ended
+		h.t.Logf("ConnEnd: %+v", s)
+	}
+}
+
+// TagRPC can attach some information to the given context.
+// The context used for the rest lifetime of the RPC will be derived from
+// the returned context.
+func (h *StatsHandler) TagRPC(ctx context.Context, s *stats.RPCTagInfo) context.Context {
+	return ctx
+}
+
+// HandleRPC processes the RPC stats.
+func (h *StatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
+
+}
+
+func TestGrpcDial(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
 	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
 	if err != nil {
 		t.Fatalf("failed to load test certs: %v", err)
 	}
-	lis, err := tls.Listen("tcp", "localhost:0", &tls.Config{
-		Certificates: []tls.Certificate{cert},
-	})
+	t.Logf("Creating new TCP listener...")
+	lis, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatalf("failed to create TLS listener: %v", err)
 	}
 	defer lis.Close()
 
+	t.Logf("Creating new grpc TLS server...")
 	s := grpc.NewServer(
 		grpc.Creds(credentials.NewTLS(&tls.Config{
 			Certificates: []tls.Certificate{cert},
+			NextProtos:   []string{"h2"},
+			GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
+				t.Logf("[Server] TLS ClientHello from %v: Version=%x, CipherSuites=%v, LocalAddr=%s",
+					info.Conn.RemoteAddr(),
+					info.SupportedVersions,
+					info.CipherSuites,
+					info.Conn.LocalAddr())
+				t.Logf("Server got ClientHello with ALPN protos: %v", info.SupportedProtos)
+				return nil, nil // return nil to use default config
+			},
 		})),
-		grpc.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-			t.Logf("Server unary interceptor: %v", info.FullMethod)
-			return handler(ctx, req)
-		}),
-		// Add stream interceptor
-		grpc.StreamInterceptor(func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-			t.Logf("Server stream interceptor: %v, streaming: %v", info.FullMethod, info.IsServerStream)
-			return handler(srv, ss)
-		}),
+		grpc.StatsHandler(&StatsHandler{t: t}),
 	)
 
 	srv := &testServer{t: t}
@@ -250,46 +287,89 @@ func TestFIPSTLSDialerWithTLS(t *testing.T) {
 	addr := lis.Addr().String()
 	t.Logf("Server listening on: %s", addr)
 
+	t.Log("Creating new DialFn")
 	dialFn, err := fipstls.NewGrpcDialFn(
 		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
-		fipstls.WithDialTimeout(10*time.Second),
 		fipstls.WithConnTracingEnabled())
 	if err != nil {
 		t.Fatalf("Failed to create grpc dialer: %v", err)
 	}
 
-	// t.Log("Attempting raw connection...")
-	// rawConn, err := dialFn(context.Background(), addr)
-	// if err != nil {
-	// 	t.Fatalf("Direct dial failed: %v", err)
-	// }
-	// rawConn.Close()
-	// t.Log("Raw connection succeeded")
+	t.Log("Attempting raw connection...")
+	rawConn, err := dialFn(context.Background(), addr)
+	if err != nil {
+		t.Fatalf("Direct dial failed: %v", err)
+	}
+	rawConn.Close()
+	t.Log("Raw connection succeeded")
 
+	t.Log("Attempting grpc connection...")
+	dialConn, err := grpc.DialContext(
+		context.Background(),
+		addr,
+		grpc.WithContextDialer(dialFn),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+		grpc.WithMaxCallAttempts(1))
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	t.Log("Grpc dial successful")
+	defer dialConn.Close()
+
+}
+
+func TestGrpcClient(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
+	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
+	if err != nil {
+		t.Fatalf("failed to load test certs: %v", err)
+	}
+	t.Logf("Creating new TCP listener...")
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to create TLS listener: %v", err)
+	}
+	defer lis.Close()
+
+	t.Logf("Creating new grpc TLS server...")
+	s := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			NextProtos:   []string{"h2"},
+			GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
+				t.Logf("[Server] TLS ClientHello from %v: Version=%x, CipherSuites=%v, LocalAddr=%s",
+					info.Conn.RemoteAddr(),
+					info.SupportedVersions,
+					info.CipherSuites,
+					info.Conn.LocalAddr())
+				t.Logf("Server got ClientHello with ALPN protos: %v", info.SupportedProtos)
+				return nil, nil // return nil to use default config
+			},
+		})),
+		grpc.StatsHandler(&StatsHandler{t: t}),
+	)
+
+	srv := &testServer{t: t}
+	pb.RegisterYourServiceServer(s, srv)
+	go s.Serve(lis)
+	defer s.Stop()
+
+	addr := lis.Addr().String()
+	t.Logf("Server listening on: %s", addr)
+
+	t.Log("Creating new DialFn")
+	dialFn, err := fipstls.NewGrpcDialFn(
+		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")))
+	if err != nil {
+		t.Fatalf("Failed to create grpc dialer: %v", err)
+	}
+
+	t.Log("Creating new client...")
 	conn, err := grpc.NewClient(
 		addr,
 		grpc.WithContextDialer(dialFn),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(func(
-			ctx context.Context,
-			method string,
-			req, reply interface{},
-			cc *grpc.ClientConn,
-			invoker grpc.UnaryInvoker,
-			opts ...grpc.CallOption) error {
-			t.Logf("Client sending request: %v", method)
-			return invoker(ctx, method, req, reply, cc, opts...)
-		}),
-		grpc.WithStreamInterceptor(func(
-			ctx context.Context,
-			desc *grpc.StreamDesc,
-			cc *grpc.ClientConn,
-			method string,
-			streamer grpc.Streamer,
-			opts ...grpc.CallOption) (grpc.ClientStream, error) {
-			t.Logf("Client stream interceptor: %v, server-stream: %v", method, desc.ServerStreams)
-			return streamer(ctx, desc, cc, method, opts...)
-		}),
 	)
 	if err != nil {
 		t.Fatalf("creating gRPC new client failed: %v", err)
@@ -327,6 +407,7 @@ func TestFIPSTLSDialerWithTLS(t *testing.T) {
 
 	// Test client streaming
 	t.Run("ClientStreaming", func(t *testing.T) {
+		// t.Skip("test one rn")
 		stream, err := client.ClientStream(ctx)
 		if err != nil {
 			t.Fatalf("Failed to start client stream: %v", err)
@@ -344,9 +425,6 @@ func TestFIPSTLSDialerWithTLS(t *testing.T) {
 			t.Fatalf("Failed to receive response: %v", err)
 		}
 
-		if !reflect.DeepEqual(resp.GetMessage(), messages) {
-			t.Errorf("Server received %v, want %v", resp.GetMessage(), messages)
-		}
 		if resp.Message != "Received all messages" {
 			t.Errorf("Got response %q, want 'Received all messages'", resp.Message)
 		}
@@ -373,6 +451,7 @@ func TestFIPSTLSDialerWithTLS(t *testing.T) {
 		}()
 
 		go func() {
+			i := 0
 			for {
 				resp, err := stream.Recv()
 				if err == io.EOF {
@@ -383,9 +462,15 @@ func TestFIPSTLSDialerWithTLS(t *testing.T) {
 					t.Errorf("Failed to receive: %v", err)
 					return
 				}
-				expected := "Echo: "
-				if resp.Message != expected {
-					t.Errorf("Got message %q, want %q", resp.Message, expected)
+
+				if i < len(messages) {
+					expected := "Echo: " + messages[i]
+					if resp.Message != expected {
+						t.Errorf("Got message %q, want %q", resp.Message, expected)
+					}
+					i++
+				} else {
+					t.Error("Received more messages than expected")
 				}
 			}
 		}()
@@ -396,5 +481,247 @@ func TestFIPSTLSDialerWithTLS(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("Timeout waiting for stream completion")
 		}
+	})
+}
+
+// StreamEvent represents a progress update from a single stream.
+type StreamEvent struct {
+	StreamID int
+	Interval int
+	IsSender bool // distinguish between send/receive progress
+}
+
+// ProgressRecorder tracks and reports progress across multiple concurrent streams.
+// It collects progress events from individual streams and periodically reports
+// aggregated progress statistics.
+type ProgressRecorder struct {
+	t              *testing.T
+	eventChan      chan StreamEvent
+	numStreams     int
+	numMessages    int
+	sampleSize     int
+	printTicker    *time.Ticker
+	currentStats   map[int]map[int]bool // map[interval]map[streamID]received
+	streamProgress sync.Map             // map[int]int - streamID -> lastRecordedInterval
+	done           chan struct{}
+}
+
+// NewProgressRecorder creates a new ProgressRecorder that tracks progress
+// for the specified number of streams and interval size.
+//
+// Parameters:
+//   - numStreams: total number of streams to track
+//   - intervalSize: number of messages that constitute one interval
+func NewProgressRecorder(t *testing.T, numStreams, numMessages, sampleSize int, runPeriod time.Duration) *ProgressRecorder {
+	pr := &ProgressRecorder{
+		t:            t,
+		eventChan:    make(chan StreamEvent, numStreams*2),
+		numStreams:   numStreams,
+		numMessages:  numMessages,
+		sampleSize:   sampleSize,
+		currentStats: make(map[int]map[int]bool),
+		printTicker:  time.NewTicker(runPeriod),
+		done:         make(chan struct{}),
+	}
+	go pr.run()
+	return pr
+}
+
+// RecordProgress records a progress update for a specific stream.
+// It only records the progress if the stream has reached a new interval.
+func (pr *ProgressRecorder) RecordProgress(streamID int, msgCount int, isSender bool) {
+	interval := msgCount / pr.sampleSize
+
+	lastInterval, exists := pr.streamProgress.Load(streamID)
+	if !exists || interval > lastInterval.(int) {
+		pr.streamProgress.Store(streamID, interval)
+		pr.eventChan <- StreamEvent{
+			StreamID: streamID,
+			Interval: interval,
+			IsSender: isSender,
+		}
+	}
+}
+
+// run is the main event loop that processes incoming stream events and triggers
+// periodic progress updates. It runs in its own goroutine until Close() is called.
+func (pr *ProgressRecorder) run() {
+	for {
+		select {
+		case event := <-pr.eventChan:
+			if _, exists := pr.currentStats[event.Interval]; !exists {
+				pr.currentStats[event.Interval] = make(map[int]bool)
+			}
+			pr.currentStats[event.Interval][event.StreamID] = true
+
+		case <-pr.printTicker.C:
+			pr.printProgress()
+
+		case <-pr.done:
+			pr.printTicker.Stop()
+			return
+		}
+	}
+}
+
+// printProgress prints the current progress for all active intervals.
+// It displays the percentage of streams that have completed each interval
+// and cleans up completed intervals.
+func (pr *ProgressRecorder) printProgress() {
+	// Sort intervals for ordered printing
+	var intervals []int
+	for interval := range pr.currentStats {
+		intervals = append(intervals, interval)
+	}
+	sort.Ints(intervals)
+
+	for _, interval := range intervals {
+		streams := pr.currentStats[interval]
+		count := len(streams)
+		if count == pr.numStreams {
+			msgsDone := float64((interval+1)*pr.sampleSize) / float64(pr.numMessages) * 100
+			msgsLeft := math.Round(((1 - (msgsDone / 100)) * float64(pr.numMessages)))
+			pr.t.Logf("interval%2d: %2.0f%% per-stream messages processed. %7d messages left.\n",
+				interval,
+				msgsDone,
+				int(msgsLeft),
+			)
+			delete(pr.currentStats, interval)
+		} else {
+			percentage := float64(count) / float64(pr.numStreams) * 100
+			pr.t.Logf("interval%2d: %2.0f%% streams done...\n", interval, percentage)
+		}
+	}
+}
+
+// Close stops the progress recorder and cleans up resources.
+// It should be called when the recorder is no longer needed.
+func (pr *ProgressRecorder) Close() {
+	close(pr.done)
+}
+
+func TestStressGrpcBidi(t *testing.T) {
+	defer testutils.LeakCheckLSAN(t)
+	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
+	if err != nil {
+		t.Fatalf("failed to load test certs: %v", err)
+	}
+	t.Logf("Creating new TCP listener...")
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to create TLS listener: %v", err)
+	}
+	defer lis.Close()
+
+	t.Logf("Creating new grpc TLS server...")
+	s := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			NextProtos:   []string{"h2"},
+			GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
+				t.Logf("[Server] TLS ClientHello from %v: Version=%x, CipherSuites=%v, LocalAddr=%s",
+					info.Conn.RemoteAddr(),
+					info.SupportedVersions,
+					info.CipherSuites,
+					info.Conn.LocalAddr())
+				t.Logf("Server got ClientHello with ALPN protos: %v", info.SupportedProtos)
+				return nil, nil // return nil to use default config
+			},
+		})),
+		grpc.StatsHandler(&StatsHandler{t: t}),
+	)
+
+	srv := &testServer{t: t}
+	pb.RegisterYourServiceServer(s, srv)
+	go s.Serve(lis)
+	defer s.Stop()
+
+	addr := lis.Addr().String()
+	t.Logf("Server listening on: %s", addr)
+
+	t.Log("Creating new DialFn")
+	dialFn, err := fipstls.NewGrpcDialFn(
+		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")))
+	if err != nil {
+		t.Fatalf("Failed to create grpc dialer: %v", err)
+	}
+
+	t.Log("Creating new client...")
+	conn, err := grpc.NewClient(
+		addr,
+		grpc.WithContextDialer(dialFn),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("creating gRPC new client failed: %v", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewYourServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+
+	t.Run("BidirectionalStreamingStressTest", func(t *testing.T) {
+		numStreams := 100
+		numMessages := 10000
+		intervalPercent := 10.0
+		sampleSize := int(float64(numMessages) * (intervalPercent / 100.0))
+
+		var wg sync.WaitGroup
+		wg.Add(numStreams)
+
+		recorder := NewProgressRecorder(t, numStreams, numMessages, sampleSize, 50*time.Millisecond)
+		defer recorder.Close()
+		for i := 0; i < numStreams; i++ {
+			go func(streamID int) {
+				defer wg.Done()
+
+				stream, err := client.BidiStream(ctx)
+				if err != nil {
+					t.Errorf("Stream %d: Failed to start bidi stream: %v", streamID, err)
+					return
+				}
+
+				// send
+				go func() {
+					for j := 0; j < numMessages; j++ {
+						msg := fmt.Sprintf("Stream %d, Message %d", streamID, j)
+						if err := stream.Send(&pb.Request{Message: msg}); err != nil {
+							t.Errorf("Stream %d: Failed to send: %v", streamID, err)
+							return
+						}
+						go recorder.RecordProgress(streamID, i, true)
+					}
+					stream.CloseSend()
+
+				}()
+
+				// receive
+				i := 0
+				for {
+					resp, err := stream.Recv()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						t.Errorf("Stream %d: Failed to receive: %v", streamID, err)
+						return
+					}
+
+					if i < numMessages {
+						expected := "Echo: " + fmt.Sprintf("Stream %d, Message %d", streamID, i)
+						if resp.Message != expected {
+							t.Errorf("Stream %d: Got message %q, want %q", streamID, resp.Message, expected)
+						}
+						i++
+						go recorder.RecordProgress(streamID, i, false)
+					} else {
+						t.Errorf("Stream %d: Received more messages than expected", streamID)
+					}
+				}
+			}(i)
+		}
+
+		wg.Wait()
 	})
 }

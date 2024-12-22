@@ -145,7 +145,7 @@ func SetFIPS(enabled bool) error {
 	switch vMajor {
 	case 1:
 		if C.go_openssl_FIPS_mode_set(mode) != 1 {
-			return newOpenSSLError("FIPS_mode_set")
+			return NewOpenSSLError("FIPS_mode_set")
 		}
 		return nil
 	case 3:
@@ -159,7 +159,7 @@ func SetFIPS(enabled bool) error {
 		if C.go_openssl_OSSL_PROVIDER_available(nil, provName) != 1 {
 			// If not, fallback to provName provider.
 			if C.go_openssl_OSSL_PROVIDER_load(nil, provName) == nil {
-				return newOpenSSLError("OSSL_PROVIDER_try_load")
+				return NewOpenSSLError("OSSL_PROVIDER_try_load")
 			}
 			// Make sure we now have a provider available.
 			if C.go_openssl_OSSL_PROVIDER_available(nil, provName) != 1 {
@@ -167,7 +167,7 @@ func SetFIPS(enabled bool) error {
 			}
 		}
 		if C.go_openssl_EVP_default_properties_enable_fips(nil, mode) != 1 {
-			return newOpenSSLError("openssl: EVP_default_properties_enable_fips")
+			return NewOpenSSLError("openssl: EVP_default_properties_enable_fips")
 		}
 		return nil
 	default:
@@ -201,7 +201,7 @@ func addr(p []byte) *byte {
 	return (*byte)(noescape(unsafe.Pointer(&p[0])))
 }
 
-func newOpenSSLError(msg string) error {
+func NewOpenSSLError(msg string) error {
 	var b strings.Builder
 	b.WriteString(msg)
 	b.WriteString("\nopenssl error(s):")

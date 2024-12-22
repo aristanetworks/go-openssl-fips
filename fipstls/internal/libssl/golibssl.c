@@ -384,3 +384,27 @@ go_openssl_create_bio(const char *hostname, const char *port, int family, int mo
 
     return bio;
 }
+
+static const unsigned char h2_proto[] = { 2, 'h', '2' };
+
+int
+go_openssl_set_h2_alpn(GO_SSL_CTX_PTR ctx)
+{
+    return go_openssl_SSL_CTX_set_alpn_protos(ctx, h2_proto, 3);
+}
+
+int
+check_alpn_status(GO_SSL_PTR ssl, char *selected_proto, int *selected_len) {
+    const unsigned char *proto;
+    unsigned int len;
+    go_openssl_SSL_get0_alpn_selected(ssl, &proto, &len);
+
+    if (len > 0 && len < 256) {  // Add safety bound
+        memcpy(selected_proto, proto, len);
+        *selected_len = len;
+        return len;
+    }
+
+    *selected_len = 0;
+    return 0;
+}

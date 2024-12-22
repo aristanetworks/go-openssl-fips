@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
@@ -94,7 +95,7 @@ func NewConn(ctx *Context, bio *BIO, deadline time.Time, trace bool) (*Conn, err
 		},
 	}
 	if c.enableTrace {
-		c.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
+		c.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
 	}
 	return c, nil
 }
@@ -108,19 +109,15 @@ func (c *Conn) configureBIO(b *BIO) error {
 }
 
 func (c *Conn) connect() error {
-	err := libssl.SSLConnect(c.ssl)
-	if err == nil {
-		return err
-	}
-	return nil
+	libssl.SSLClearError()
+	return libssl.SSLConnect(c.ssl)
 }
 
 // Handshake initiates a TLS handshake with the peer.
 func (c *Conn) Handshake() error {
 	c.trace("Handshake begin")
 	defer c.trace("Handshake end")
-	_, err := c.doNonBlockingIO(nil, opHandshake)
-
+	_, err := c.ioLoop(nil, opHandshake)
 	return err
 }
 
@@ -139,11 +136,9 @@ func (c *Conn) read(b []byte) (int, error) {
 	if c.closer.Err() != nil {
 		return 0, c.closer.Err()
 	}
+	libssl.SSLClearError()
 	r, n, err := libssl.SSLReadEx(c.ssl, int64(len(b)))
 	if err != nil {
-		if err := libssl.SSLGetVerifyResult(c.ssl); err != nil {
-			return n, err
-		}
 		return n, err
 	}
 	copy(b, r[:n])
@@ -160,7 +155,7 @@ func (c *Conn) Read(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	return c.doNonBlockingIO(b, opRead)
+	return c.ioLoop(b, opRead)
 }
 
 // Write will write bytes from the buffer to the [Conn] connection.
@@ -168,6 +163,7 @@ func (c *Conn) write(b []byte) (int, error) {
 	if c.closed.Load() {
 		return 0, c.closer.Err()
 	}
+	libssl.SSLClearError()
 	return libssl.SSLWriteEx(c.ssl, b)
 }
 
@@ -181,7 +177,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 		// we're done writing
 		return 0, ErrShutdown
 	}
-	return c.doNonBlockingIO(b, opWrite)
+	return c.ioLoop(b, opWrite)
 }
 
 // Shutdown will send a close-notify alert to the peer to gracefully shutdown
@@ -190,6 +186,7 @@ func (c *Conn) shutdown() error {
 	if c.closed.Load() {
 		return c.closer.Err()
 	}
+	libssl.SSLClearError()
 	return libssl.SSLShutdown(c.ssl)
 }
 
@@ -209,7 +206,7 @@ func (c *Conn) closeNotify() error {
 	if !c.closeNotifySent {
 		// Set a Write Deadline to prevent possibly blocking forever.
 		c.SetWriteDeadline(time.Now().Add(time.Second * 5))
-		_, c.closeErr = c.doNonBlockingIO(nil, opShutdown)
+		_, c.closeErr = c.ioLoop(nil, opShutdown)
 		defer c.closer.Close()
 		c.closeNotifySent = true
 		c.closed.Store(true)
@@ -247,7 +244,7 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *Conn) doNonBlockingIO(b []byte, opKind string) (int, error) {
+func (c *Conn) ioLoop(b []byte, opKind string) (int, error) {
 	c.trace(fmt.Sprintf("%v non-blocking begin", opKind))
 	defer c.trace(fmt.Sprintf("%v non-blocking end", opKind))
 
@@ -300,6 +297,21 @@ func (c *Conn) doNonBlockingIO(b []byte, opKind string) (int, error) {
 					c.trace(fmt.Sprintf("%s non-blocking forced closed", opKind))
 					// otherwise we ignore it
 					return result, nil
+				}
+			case libssl.SSL_ERROR_SYSCALL:
+				if opKind == opRead {
+					// check if there is actually an I/O error. If not, we can ignore this.
+					// For reference: https://github.com/openssl/openssl/issues/12416
+					errno, err := syscall.GetsockoptInt(c.bio.FD(), syscall.SOL_SOCKET, syscall.SO_ERROR)
+					if err != nil {
+						c.trace(fmt.Sprintf("%s failed! could not get errno: %v", opKind, errno))
+						return result, newConnError(opKind, c.remoteAddr, err)
+					}
+					if errno != 0 {
+						c.trace(fmt.Sprintf("%s failed! errno: %v len(b): %v result: %v openssl error: %s", opKind, errno, len(b), result, libssl.NewOpenSSLError("")))
+						return result, newConnError(opKind, c.remoteAddr, err)
+					}
+					// otherwise, retry
 				}
 			default:
 				c.trace(fmt.Sprintf("%v non-blocking error: %v", opKind, err))

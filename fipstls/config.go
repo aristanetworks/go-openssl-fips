@@ -46,6 +46,15 @@ const (
 	VerifyPostHandshake
 )
 
+// ALPNProto
+type ALPNProto int
+
+const (
+	ALPNProtoH1Only ALPNProto = iota
+	ALPNProtoH2Only
+	ALPNProtoBoth
+)
+
 // X509VerifyFlags represents certificate verification flags.
 type X509VerifyFlags uint32
 
@@ -100,6 +109,9 @@ type Config struct {
 
 	// RenegotiationDisabled disables all renegotiation.
 	RenegotiationDisabled bool
+
+	// NextProto is the ALPN protocol to prefer when establishing a connection.
+	NextProto ALPNProto
 }
 
 // DefaultConfig returns a [Config] with sane default options. The default context is uninitialized.
@@ -199,5 +211,12 @@ func WithCompressionDisabled() ConfigOption {
 func WithRenegotiationDisabled() ConfigOption {
 	return func(cfg *Config) {
 		cfg.RenegotiationDisabled = true
+	}
+}
+
+// WithALPNProtocol sets the ALPN protocol to use.
+func WithALPNProtocol(proto ALPNProto) ConfigOption {
+	return func(cfg *Config) {
+		cfg.NextProto = proto
 	}
 }

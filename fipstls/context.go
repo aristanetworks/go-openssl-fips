@@ -2,7 +2,6 @@ package fipstls
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
@@ -73,11 +72,9 @@ func (c *Context) new() (ctx *libssl.SSLCtx, err error) {
 	}
 	ctx, err = newSslCtx(c.TLS.Method)
 	if err != nil {
-		libssl.SSLCtxFree(ctx)
 		return nil, err
 	}
 	if err = c.apply(ctx); err != nil {
-		libssl.SSLCtxFree(ctx)
 		return nil, err
 	}
 	return ctx, nil
@@ -121,7 +118,12 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	}
 
 	if err := libssl.SSLCtxSetOptions(ctx, options); err != nil {
-		return fmt.Errorf("failed to set SSL_CTX options: %w", err)
+		return err
+	}
+	if c.TLS.NextProto == ALPNProtoH2Only {
+		if err := libssl.SSLCtxSetH2Proto(ctx); err != nil {
+			return err
+		}
 	}
 
 	// Set verification mode
@@ -144,12 +146,12 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	// Set protocol versions
 	if c.TLS.MinTLSVersion != 0 {
 		if err := libssl.SSLCtxSetMinProtoVersion(ctx, c.TLS.MinTLSVersion); err != nil {
-			return fmt.Errorf("failed to set minimum protocol version: %w", err)
+			return err
 		}
 	}
 	if c.TLS.MaxTLSVersion != 0 {
 		if err := libssl.SSLCtxSetMaxProtoVersion(ctx, c.TLS.MaxTLSVersion); err != nil {
-			return fmt.Errorf("failed to set maximum protocol version: %w", err)
+			return err
 		}
 	}
 
@@ -198,7 +200,7 @@ func (c *Context) New() (ctx *Context, err error) {
 	if !c.unsafe {
 		// [Conn.Close] will free the memory
 		if err = c.newCloseable(ctx); err != nil {
-			return nil, err
+			return ctx, err
 		}
 	}
 	return ctx, nil
