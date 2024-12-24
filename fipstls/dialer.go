@@ -152,7 +152,7 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return &BIO{closer: noopCloser{}}, ctx.Err()
 	case b := <-ch:
 		if b.err != nil {
 			return b.bio, b.err

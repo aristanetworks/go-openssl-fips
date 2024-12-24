@@ -32,5 +32,6 @@ int go_openssl_dial_host(GO_SSL_PTR ssl, const char *hostname, const char *port,
 int go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname);
 int go_openssl_ssl_configure_sock(GO_SSL_PTR ssl, const char *hostname, int sockfd);
 int go_openssl_ssl_configure_bio(GO_SSL_PTR ssl, GO_BIO_PTR bio, const char *hostname);
+int go_openssl_ssl_configure_rwbio(GO_SSL_PTR ssl, GO_BIO_PTR rbio, GO_BIO_PTR wbio, const char *hostname);
 int go_openssl_set_h2_alpn(GO_SSL_CTX_PTR ctx);
 int check_alpn_status(GO_SSL_PTR ssl, char *selected_proto, int *selected_len);

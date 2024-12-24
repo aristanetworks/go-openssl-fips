@@ -726,7 +726,7 @@ func SSLConfigureBIO(ssl *SSL, bio *BIO, hostname string) error {
 	cHost := C.CString(hostname)
 	defer C.free(unsafe.Pointer(cHost))
 	if r := C.go_openssl_ssl_configure_bio(ssl.inner, bio.inner, cHost); r != 0 {
-		return newSSLError("libssl: ssl_configure", SSLGetError(ssl, int(r)))
+		return newSSLError("libssl: ssl_configure_bio", SSLGetError(ssl, int(r)))
 	}
 	return nil
 }

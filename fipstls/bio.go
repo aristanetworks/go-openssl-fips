@@ -2,6 +2,7 @@ package fipstls
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"syscall"
 
@@ -54,11 +55,10 @@ func NewBIO(addr, network string, mode int) (b *BIO, err error) {
 	if err := b.setAddrInfo(); err != nil {
 		return b, err
 	}
-	b.closer = &onceCloser{
-		closeFunc: func() error {
-			return libssl.BIOFree(b.bio)
-		},
-	}
+	b.closer = newOnceCloser(func() error {
+		log.Println("BIO closer called")
+		return libssl.BIOFree(b.bio)
+	})
 	return b, nil
 }
 

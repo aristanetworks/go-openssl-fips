@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -28,6 +29,16 @@ import (
 	"google.golang.org/grpc/stats"
 )
 
+var (
+	useNetDial      = flag.Bool("netdial", false, "Use default net.Dialer")
+	enableConnTrace = flag.Bool("conntrace", false, "Enable connection tracing")
+)
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	m.Run()
+}
+
 func TestDialTimeout(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 	// Create and start the server directly
@@ -39,9 +50,14 @@ func TestDialTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	opts := []fipstls.DialerOption{}
+	if *enableConnTrace {
+		opts = append(opts, fipstls.WithConnTracingEnabled())
+	}
+
 	d, err := fipstls.NewDialer(
 		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-		fipstls.WithConnTracingEnabled(),
+		opts...,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -146,10 +162,15 @@ func TestDialTimeout(t *testing.T) {
 func TestDialError(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 
+	opts := []fipstls.DialerOption{}
+	if *enableConnTrace {
+		opts = append(opts, fipstls.WithConnTracingEnabled())
+	}
+
 	// This should error
 	_, err := fipstls.NewDialer(
 		nil,
-		fipstls.WithConnTracingEnabled(),
+		opts...,
 	)
 	if err == nil {
 		t.Fatalf("Expected %v error but got nil", fipstls.ErrEmptyContext)
@@ -288,9 +309,13 @@ func TestGrpcDial(t *testing.T) {
 	t.Logf("Server listening on: %s", addr)
 
 	t.Log("Creating new DialFn")
+	fipsOpts := []fipstls.DialerOption{}
+	if *enableConnTrace {
+		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
+	}
 	dialFn, err := fipstls.NewGrpcDialFn(
 		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
-		fipstls.WithConnTracingEnabled())
+		fipsOpts...)
 	if err != nil {
 		t.Fatalf("Failed to create grpc dialer: %v", err)
 	}
@@ -304,13 +329,29 @@ func TestGrpcDial(t *testing.T) {
 	t.Log("Raw connection succeeded")
 
 	t.Log("Attempting grpc connection...")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	creds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"h2"},
+	})
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+	}
+	if !*useNetDial {
+		t.Log("Running tests with fipstls.Dialer and not net.Dialer")
+
+		opts = append(opts,
+			grpc.WithContextDialer(dialFn),
+			grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		t.Log("Running tests with net.Dialer")
+	}
 	dialConn, err := grpc.DialContext(
-		context.Background(),
+		ctx,
 		addr,
-		grpc.WithContextDialer(dialFn),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-		grpc.WithMaxCallAttempts(1))
+		opts...,
+	)
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}
@@ -359,18 +400,35 @@ func TestGrpcClient(t *testing.T) {
 	t.Logf("Server listening on: %s", addr)
 
 	t.Log("Creating new DialFn")
+	fipsOpts := []fipstls.DialerOption{}
+	if *enableConnTrace {
+		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
+	}
 	dialFn, err := fipstls.NewGrpcDialFn(
-		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")))
+		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
+		fipsOpts...)
 	if err != nil {
 		t.Fatalf("Failed to create grpc dialer: %v", err)
 	}
 
 	t.Log("Creating new client...")
-	conn, err := grpc.NewClient(
-		addr,
-		grpc.WithContextDialer(dialFn),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	creds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"h2"},
+	})
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+	}
+	if !*useNetDial {
+		t.Log("Running tests with fipstls.Dialer and not net.Dialer")
+
+		opts = append(opts,
+			grpc.WithContextDialer(dialFn),
+			grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		t.Log("Running tests with net.Dialer")
+	}
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		t.Fatalf("creating gRPC new client failed: %v", err)
 	}
@@ -589,18 +647,16 @@ func (pr *ProgressRecorder) printProgress() {
 			delete(pr.currentStats, interval)
 		} else {
 			percentage := float64(count) / float64(pr.numStreams) * 100
-			pr.t.Logf("interval%2d: %2.0f%% streams done...\n", interval, percentage)
+			pr.t.Logf("interval%2d: %2.0f%% of streams done processing...\n", interval, percentage)
 		}
 	}
 }
 
-// Close stops the progress recorder and cleans up resources.
-// It should be called when the recorder is no longer needed.
 func (pr *ProgressRecorder) Close() {
 	close(pr.done)
 }
 
-func TestStressGrpcBidi(t *testing.T) {
+func TestGrpcBidiStress(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
 	if err != nil {
@@ -640,8 +696,13 @@ func TestStressGrpcBidi(t *testing.T) {
 	t.Logf("Server listening on: %s", addr)
 
 	t.Log("Creating new DialFn")
+	fipsOpts := []fipstls.DialerOption{}
+	if *enableConnTrace {
+		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
+	}
 	dialFn, err := fipstls.NewGrpcDialFn(
-		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")))
+		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
+		fipsOpts...)
 	if err != nil {
 		t.Fatalf("Failed to create grpc dialer: %v", err)
 	}
@@ -670,8 +731,8 @@ func TestStressGrpcBidi(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(numStreams)
 
-		recorder := NewProgressRecorder(t, numStreams, numMessages, sampleSize, 50*time.Millisecond)
-		defer recorder.Close()
+		r := NewProgressRecorder(t, numStreams, numMessages, sampleSize, 50*time.Millisecond)
+		defer r.Close()
 		for i := 0; i < numStreams; i++ {
 			go func(streamID int) {
 				defer wg.Done()
@@ -690,7 +751,7 @@ func TestStressGrpcBidi(t *testing.T) {
 							t.Errorf("Stream %d: Failed to send: %v", streamID, err)
 							return
 						}
-						go recorder.RecordProgress(streamID, i, true)
+						r.RecordProgress(streamID, i, true)
 					}
 					stream.CloseSend()
 
@@ -714,7 +775,7 @@ func TestStressGrpcBidi(t *testing.T) {
 							t.Errorf("Stream %d: Got message %q, want %q", streamID, resp.Message, expected)
 						}
 						i++
-						go recorder.RecordProgress(streamID, i, false)
+						r.RecordProgress(streamID, i, false)
 					} else {
 						t.Errorf("Stream %d: Received more messages than expected", streamID)
 					}

@@ -60,7 +60,7 @@ func NewUnsafeCtx(opts ...ConfigOption) (ctx *Context, err error) {
 	if !ctx.unsafe {
 		return ctx, nil
 	}
-	if err = ctx.newCloseable(ctx); err != nil {
+	if err = ctx.addCloser(ctx); err != nil {
 		return nil, err
 	}
 	return ctx, nil
@@ -179,17 +179,15 @@ func (c *Context) Close() error {
 	return c.closer.Close()
 }
 
-// newCloseable will create a new C.SSL_CTX and add a closer to free it.
-func (c *Context) newCloseable(cc *Context) (err error) {
+// addCloser will create a new C.SSL_CTX and add a closer to free it.
+func (c *Context) addCloser(cc *Context) (err error) {
 	cc.ctx, err = c.new()
 	if err != nil {
 		return err
 	}
-	cc.closer = &onceCloser{
-		closeFunc: func() error {
-			return libssl.SSLCtxFree(cc.ctx)
-		},
-	}
+	cc.closer = newOnceCloser(func() error {
+		return libssl.SSLCtxFree(cc.ctx)
+	})
 	return nil
 }
 
@@ -199,7 +197,7 @@ func (c *Context) New() (ctx *Context, err error) {
 	ctx = &Context{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
 	if !c.unsafe {
 		// [Conn.Close] will free the memory
-		if err = c.newCloseable(ctx); err != nil {
+		if err = c.addCloser(ctx); err != nil {
 			return ctx, err
 		}
 	}
