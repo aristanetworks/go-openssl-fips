@@ -37,10 +37,10 @@ type Context struct {
 
 // NewCtx configures the [Context] but will not allocate a C.SSL_CTX object.
 //
-// Calling [Context.New] will create an SSLContext with a C.SSL_CTX allocated
+// Calling [Context.New] will create a new [Context] with a C.SSL_CTX allocated
 // using the [Context.TLS] options.
 //
-// The C.SSL_CTX will be freed on [Context.Close].
+// The C.SSL_CTX will be freed on [Conn.Close].
 func NewCtx(opts ...ConfigOption) *Context {
 	return &Context{
 		closer: noopCloser{},
@@ -52,7 +52,7 @@ func NewCtx(opts ...ConfigOption) *Context {
 // in creating [Conn] connections. The caller is responsible for freeing the
 // C memory allocated for C.SSL_CTX with [Context.Close].
 //
-// Calling [Context.New] will create an SSLContext that references the
+// Calling [Context.New] will create a new [Context] that references the
 // pointer receiver's C.SSL_CTX, but can't free it.
 func NewUnsafeCtx(opts ...ConfigOption) (ctx *Context, err error) {
 	ctx = NewCtx(opts...)

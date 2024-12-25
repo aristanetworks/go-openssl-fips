@@ -5,7 +5,7 @@ package testutils;
 
 option go_package = "github.com/aristnetworks/go-openssl-fips/fipstls/internal/testutils/proto";
 
-service YourService {
+service TestService {
   // Server Streaming
   rpc ServerStream(Request) returns (stream Response) {}
 

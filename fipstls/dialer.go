@@ -9,11 +9,12 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
+// DefaultNetwork is the default network to dial connections over.
 var DefaultNetwork = "tcp4"
 
 // Dialer is used for dialing [Conn] connections.
 type Dialer struct {
-	// Ctx is the [SSLContext] that will be used for creating [Conn] connections.
+	// Ctx is the [Context] that will be used for creating [Conn] connections.
 	Ctx *Context
 
 	// Timeout is the maximum amount of time a dial will wait for
@@ -43,31 +44,32 @@ type Dialer struct {
 	Network string
 }
 
-type DialerOption func(*Dialer)
+// DialOption is used for configuring the [Dialer].
+type DialOption func(*Dialer)
 
 // WithDialTimeout sets the timeout for the dialer.
-func WithDialTimeout(timeout time.Duration) DialerOption {
+func WithDialTimeout(timeout time.Duration) DialOption {
 	return func(d *Dialer) {
 		d.Timeout = timeout
 	}
 }
 
 // WithDialDeadline sets the deadline for the dialer.
-func WithDialDeadline(deadline time.Time) DialerOption {
+func WithDialDeadline(deadline time.Time) DialOption {
 	return func(d *Dialer) {
 		d.Deadline = deadline
 	}
 }
 
 // WithConnTracingEnabled enables tracing for the dialer.
-func WithConnTracingEnabled() DialerOption {
+func WithConnTracingEnabled() DialOption {
 	return func(d *Dialer) {
 		d.ConnTraceEnabled = true
 	}
 }
 
 // WithNetwork can be one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or "unix".
-func WithNetwork(network string) DialerOption {
+func WithNetwork(network string) DialOption {
 	return func(d *Dialer) {
 		d.Network = network
 	}
@@ -75,9 +77,9 @@ func WithNetwork(network string) DialerOption {
 
 var ErrEmptyContext = errors.New("fipstls: cannot create fipstls.Dialer from nil fipstls.Context")
 
-// NewDialer is returns a [Dialer] configured with [DialerOption]. The
+// NewDialer is returns a [Dialer] configured with [DialOption]. The
 // [Context] should not be nil.
-func NewDialer(ctx *Context, opts ...DialerOption) (*Dialer, error) {
+func NewDialer(ctx *Context, opts ...DialOption) (*Dialer, error) {
 	if ctx == nil {
 		return nil, ErrEmptyContext
 	}
@@ -111,7 +113,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 
 // NewGrpcDialFn returns a dialer function for grpc to create [Conn] connections.
 // The [Context] should not be nil.
-func NewGrpcDialFn(sslCtx *Context, opts ...DialerOption) (func(context.Context,
+func NewGrpcDialFn(sslCtx *Context, opts ...DialOption) (func(context.Context,
 	string) (net.Conn, error), error) {
 	d, err := NewDialer(sslCtx, opts...)
 	if err != nil {
@@ -176,7 +178,7 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	conn.trace("Post-Handshake negotiated protocols:" + libssl.SSLALPNStatus(conn.ssl))
+	conn.trace("Post-Handshake negotiated protocols: " + libssl.SSLStatusALPN(conn.ssl))
 	return conn, nil
 }
 

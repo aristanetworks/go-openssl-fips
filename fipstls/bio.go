@@ -20,19 +20,6 @@ type BIO struct {
 	remoteAddr net.Addr
 }
 
-func parseNetwork(network string) (int, error) {
-	switch network {
-	case "tcp", "tcp4":
-		return syscall.AF_INET, nil
-	case "tcp6":
-		return syscall.AF_INET6, nil
-	case "unix":
-		return syscall.AF_UNIX, nil
-	default:
-		return 0, net.UnknownNetworkError(network)
-	}
-}
-
 // NewBIO will create a new [libssl.BIO] connected to the host. It can be either blocking (mode=0)
 // or non-blocking (mode=1).
 func NewBIO(addr, network string, mode int) (b *BIO, err error) {
@@ -62,14 +49,17 @@ func NewBIO(addr, network string, mode int) (b *BIO, err error) {
 	return b, nil
 }
 
-// BIO returns a pointer to the underlying [libssl.BIO] C object.
-func (b *BIO) BIO() *libssl.BIO {
-	return b.bio
-}
-
-// Hostname returns the peer hostname.
-func (b *BIO) Hostname() string {
-	return b.hostname
+func parseNetwork(network string) (int, error) {
+	switch network {
+	case "tcp", "tcp4":
+		return syscall.AF_INET, nil
+	case "tcp6":
+		return syscall.AF_INET6, nil
+	case "unix":
+		return syscall.AF_UNIX, nil
+	default:
+		return 0, net.UnknownNetworkError(network)
+	}
 }
 
 // setAddrInfo initializes the local and remote addresses of the [BIO] socket connection.
@@ -117,6 +107,16 @@ func zoneToString(zone int) string {
 		return ifi.Name
 	}
 	return fmt.Sprintf("%d", zone)
+}
+
+// BIO returns a pointer to the underlying [libssl.BIO] C object.
+func (b *BIO) BIO() *libssl.BIO {
+	return b.bio
+}
+
+// Hostname returns the peer hostname.
+func (b *BIO) Hostname() string {
+	return b.hostname
 }
 
 // LocalAddr returns the local address if known.

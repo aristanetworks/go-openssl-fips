@@ -243,10 +243,10 @@ func (c *Conn) Close() error {
 		// avoid sending the alertCloseNotify, which may block
 		// waiting on handshakeMutex or the c.out mutex.
 		c.trace("Force closing to handle Close-during-Write")
-		// send done to stop any concurrent reads / writes
 		if c.closed.Load() {
 			return c.closeErr
 		}
+		// send done to stop any concurrent reads / writes
 		c.closer.Done()
 		c.closed.Store(true)
 		return c.closer.Close()

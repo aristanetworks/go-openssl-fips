@@ -66,7 +66,7 @@ func SSLCtxSetH2Proto(sslCtx *SSLCtx) error {
 	return nil
 }
 
-func SSLALPNStatus(ssl *SSL) string {
+func SSLStatusALPN(ssl *SSL) string {
 	var proto [256]C.char
 	var length C.int
 

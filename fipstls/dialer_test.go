@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -30,12 +31,13 @@ import (
 )
 
 var (
-	useNetDial      = flag.Bool("netdial", false, "Use default net.Dialer")
-	enableConnTrace = flag.Bool("conntrace", false, "Enable connection tracing")
+	useNetDial         = flag.Bool("netdial", false, "Use default net.Dialer")
+	enableConnTrace    = flag.Bool("conntrace", false, "Enable connection tracing")
+	enableProgRecorder = flag.Bool("showprog", false, "Enable progress recorder output")
 )
 
 func TestMain(m *testing.M) {
-	flag.Parse()
+	testing.Init()
 	m.Run()
 }
 
@@ -50,7 +52,7 @@ func TestDialTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := []fipstls.DialerOption{}
+	opts := []fipstls.DialOption{}
 	if *enableConnTrace {
 		opts = append(opts, fipstls.WithConnTracingEnabled())
 	}
@@ -162,7 +164,7 @@ func TestDialTimeout(t *testing.T) {
 func TestDialError(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
 
-	opts := []fipstls.DialerOption{}
+	opts := []fipstls.DialOption{}
 	if *enableConnTrace {
 		opts = append(opts, fipstls.WithConnTracingEnabled())
 	}
@@ -182,14 +184,14 @@ func TestDialError(t *testing.T) {
 
 // First, let's define a test server that implements streaming
 type testServer struct {
-	pb.UnimplementedYourServiceServer
+	pb.UnimplementedTestServiceServer
 	// Add test tracking fields if needed
 	receivedMessages []string
-	t                *testing.T
+	t                testing.TB
 }
 
 // Server streaming implementation
-func (s *testServer) ServerStream(req *pb.Request, stream pb.YourService_ServerStreamServer) error {
+func (s *testServer) ServerStream(req *pb.Request, stream pb.TestService_ServerStreamServer) error {
 	messages := []string{"msg1", "msg2", "msg3"}
 	for _, msg := range messages {
 		if err := stream.Send(&pb.Response{Message: msg}); err != nil {
@@ -200,7 +202,7 @@ func (s *testServer) ServerStream(req *pb.Request, stream pb.YourService_ServerS
 }
 
 // Client streaming implementation
-func (s *testServer) ClientStream(stream pb.YourService_ClientStreamServer) error {
+func (s *testServer) ClientStream(stream pb.TestService_ClientStreamServer) error {
 	s.receivedMessages = []string{} // Reset for test
 	for {
 		msg, err := stream.Recv()
@@ -217,7 +219,7 @@ func (s *testServer) ClientStream(stream pb.YourService_ClientStreamServer) erro
 }
 
 // Bidirectional streaming implementation
-func (s *testServer) BidiStream(stream pb.YourService_BidiStreamServer) error {
+func (s *testServer) BidiStream(stream pb.TestService_BidiStreamServer) error {
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -237,11 +239,11 @@ func (s *testServer) BidiStream(stream pb.YourService_BidiStreamServer) error {
 }
 
 type StatsHandler struct {
-	t *testing.T
+	t testing.TB
 }
 
 func (h *StatsHandler) TagConn(ctx context.Context, info *stats.ConnTagInfo) context.Context {
-	// Connection established
+	h.t.Logf("ConnTagInfo: %+v", info)
 	return ctx
 }
 
@@ -249,11 +251,13 @@ func (h *StatsHandler) HandleConn(ctx context.Context, s stats.ConnStats) {
 	// Can check connection state changes
 	switch s.(type) {
 	case *stats.ConnBegin:
-		// New connection
-		h.t.Logf("ConnBegin: %+v", s)
+		if s.IsClient() {
+			h.t.Logf("ConnBegin: %+v", s)
+		}
 	case *stats.ConnEnd:
-		// Connection ended
-		h.t.Logf("ConnEnd: %+v", s)
+		if s.IsClient() {
+			h.t.Logf("ConnEnd: %+v", s)
+		}
 	}
 }
 
@@ -266,50 +270,28 @@ func (h *StatsHandler) TagRPC(ctx context.Context, s *stats.RPCTagInfo) context.
 
 // HandleRPC processes the RPC stats.
 func (h *StatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
-
+	switch s.(type) {
+	case *stats.InHeader:
+		if s.IsClient() {
+			h.t.Logf("InHeader: %+v", s)
+		}
+	case *stats.OutHeader:
+		if s.IsClient() {
+			h.t.Logf("OutHeader: %+v", s)
+		}
+	}
 }
 
 func TestGrpcDial(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
-	if err != nil {
-		t.Fatalf("failed to load test certs: %v", err)
-	}
-	t.Logf("Creating new TCP listener...")
-	lis, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("failed to create TLS listener: %v", err)
-	}
-	defer lis.Close()
-
-	t.Logf("Creating new grpc TLS server...")
-	s := grpc.NewServer(
-		grpc.Creds(credentials.NewTLS(&tls.Config{
-			Certificates: []tls.Certificate{cert},
-			NextProtos:   []string{"h2"},
-			GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
-				t.Logf("[Server] TLS ClientHello from %v: Version=%x, CipherSuites=%v, LocalAddr=%s",
-					info.Conn.RemoteAddr(),
-					info.SupportedVersions,
-					info.CipherSuites,
-					info.Conn.LocalAddr())
-				t.Logf("Server got ClientHello with ALPN protos: %v", info.SupportedProtos)
-				return nil, nil // return nil to use default config
-			},
-		})),
-		grpc.StatsHandler(&StatsHandler{t: t}),
-	)
-
-	srv := &testServer{t: t}
-	pb.RegisterYourServiceServer(s, srv)
-	go s.Serve(lis)
-	defer s.Stop()
+	lis, cleanupSrv := newTestServer(t)
+	defer cleanupSrv()
 
 	addr := lis.Addr().String()
 	t.Logf("Server listening on: %s", addr)
 
 	t.Log("Creating new DialFn")
-	fipsOpts := []fipstls.DialerOption{}
+	fipsOpts := []fipstls.DialOption{}
 	if *enableConnTrace {
 		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
 	}
@@ -362,79 +344,8 @@ func TestGrpcDial(t *testing.T) {
 
 func TestGrpcClient(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
-	if err != nil {
-		t.Fatalf("failed to load test certs: %v", err)
-	}
-	t.Logf("Creating new TCP listener...")
-	lis, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("failed to create TLS listener: %v", err)
-	}
-	defer lis.Close()
-
-	t.Logf("Creating new grpc TLS server...")
-	s := grpc.NewServer(
-		grpc.Creds(credentials.NewTLS(&tls.Config{
-			Certificates: []tls.Certificate{cert},
-			NextProtos:   []string{"h2"},
-			GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
-				t.Logf("[Server] TLS ClientHello from %v: Version=%x, CipherSuites=%v, LocalAddr=%s",
-					info.Conn.RemoteAddr(),
-					info.SupportedVersions,
-					info.CipherSuites,
-					info.Conn.LocalAddr())
-				t.Logf("Server got ClientHello with ALPN protos: %v", info.SupportedProtos)
-				return nil, nil // return nil to use default config
-			},
-		})),
-		grpc.StatsHandler(&StatsHandler{t: t}),
-	)
-
-	srv := &testServer{t: t}
-	pb.RegisterYourServiceServer(s, srv)
-	go s.Serve(lis)
-	defer s.Stop()
-
-	addr := lis.Addr().String()
-	t.Logf("Server listening on: %s", addr)
-
-	t.Log("Creating new DialFn")
-	fipsOpts := []fipstls.DialerOption{}
-	if *enableConnTrace {
-		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
-	}
-	dialFn, err := fipstls.NewGrpcDialFn(
-		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
-		fipsOpts...)
-	if err != nil {
-		t.Fatalf("Failed to create grpc dialer: %v", err)
-	}
-
-	t.Log("Creating new client...")
-	creds := credentials.NewTLS(&tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"h2"},
-	})
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
-	}
-	if !*useNetDial {
-		t.Log("Running tests with fipstls.Dialer and not net.Dialer")
-
-		opts = append(opts,
-			grpc.WithContextDialer(dialFn),
-			grpc.WithTransportCredentials(insecure.NewCredentials()))
-	} else {
-		t.Log("Running tests with net.Dialer")
-	}
-	conn, err := grpc.NewClient(addr, opts...)
-	if err != nil {
-		t.Fatalf("creating gRPC new client failed: %v", err)
-	}
-	defer conn.Close()
-
-	client := pb.NewYourServiceClient(conn)
+	client, cleanup := newTestClientServer(t)
+	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -542,6 +453,16 @@ func TestGrpcClient(t *testing.T) {
 	})
 }
 
+type recorder interface {
+	RecordProgress(streamID int, msgCount int, isSender bool)
+	io.Closer
+}
+
+type EmptyRecorder struct{}
+
+func (r *EmptyRecorder) RecordProgress(streamID int, msgCount int, isSender bool) {}
+func (r *EmptyRecorder) Close() error                                             { return nil }
+
 // StreamEvent represents a progress update from a single stream.
 type StreamEvent struct {
 	StreamID int
@@ -553,7 +474,7 @@ type StreamEvent struct {
 // It collects progress events from individual streams and periodically reports
 // aggregated progress statistics.
 type ProgressRecorder struct {
-	t              *testing.T
+	t              testing.TB
 	eventChan      chan StreamEvent
 	numStreams     int
 	numMessages    int
@@ -570,7 +491,10 @@ type ProgressRecorder struct {
 // Parameters:
 //   - numStreams: total number of streams to track
 //   - intervalSize: number of messages that constitute one interval
-func NewProgressRecorder(t *testing.T, numStreams, numMessages, sampleSize int, runPeriod time.Duration) *ProgressRecorder {
+func NewProgressRecorder(t testing.TB, numStreams, numMessages, sampleSize int, runPeriod time.Duration) recorder {
+	if !*enableProgRecorder {
+		return &EmptyRecorder{}
+	}
 	pr := &ProgressRecorder{
 		t:            t,
 		eventChan:    make(chan StreamEvent, numStreams*2),
@@ -652,73 +576,16 @@ func (pr *ProgressRecorder) printProgress() {
 	}
 }
 
-func (pr *ProgressRecorder) Close() {
+func (pr *ProgressRecorder) Close() error {
 	close(pr.done)
+	return nil
 }
 
 func TestGrpcBidiStress(t *testing.T) {
 	defer testutils.LeakCheckLSAN(t)
-	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
-	if err != nil {
-		t.Fatalf("failed to load test certs: %v", err)
-	}
-	t.Logf("Creating new TCP listener...")
-	lis, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("failed to create TLS listener: %v", err)
-	}
-	defer lis.Close()
+	client, cleanup := newTestClientServer(t)
+	defer cleanup()
 
-	t.Logf("Creating new grpc TLS server...")
-	s := grpc.NewServer(
-		grpc.Creds(credentials.NewTLS(&tls.Config{
-			Certificates: []tls.Certificate{cert},
-			NextProtos:   []string{"h2"},
-			GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
-				t.Logf("[Server] TLS ClientHello from %v: Version=%x, CipherSuites=%v, LocalAddr=%s",
-					info.Conn.RemoteAddr(),
-					info.SupportedVersions,
-					info.CipherSuites,
-					info.Conn.LocalAddr())
-				t.Logf("Server got ClientHello with ALPN protos: %v", info.SupportedProtos)
-				return nil, nil // return nil to use default config
-			},
-		})),
-		grpc.StatsHandler(&StatsHandler{t: t}),
-	)
-
-	srv := &testServer{t: t}
-	pb.RegisterYourServiceServer(s, srv)
-	go s.Serve(lis)
-	defer s.Stop()
-
-	addr := lis.Addr().String()
-	t.Logf("Server listening on: %s", addr)
-
-	t.Log("Creating new DialFn")
-	fipsOpts := []fipstls.DialerOption{}
-	if *enableConnTrace {
-		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
-	}
-	dialFn, err := fipstls.NewGrpcDialFn(
-		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
-		fipsOpts...)
-	if err != nil {
-		t.Fatalf("Failed to create grpc dialer: %v", err)
-	}
-
-	t.Log("Creating new client...")
-	conn, err := grpc.NewClient(
-		addr,
-		grpc.WithContextDialer(dialFn),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		t.Fatalf("creating gRPC new client failed: %v", err)
-	}
-	defer conn.Close()
-
-	client := pb.NewYourServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
@@ -785,4 +652,177 @@ func TestGrpcBidiStress(t *testing.T) {
 
 		wg.Wait()
 	})
+}
+
+func BenchmarkGrpcBidiStream(b *testing.B) {
+	// Setup test server and client (extracted to helper function)
+	client, cleanup := newTestClientServer(b)
+	defer cleanup()
+
+	// Test configuration - fixed size for each iteration
+	const (
+		numStreams        = 100
+		messagesPerStream = 1000 // Fixed number of messages per stream per iteration
+		intervalPercent   = 10.0
+	)
+
+	totalMessages := numStreams * messagesPerStream
+
+	// Reset timer after setup
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Start memory stats
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		startAlloc := memStats.TotalAlloc
+
+		// Create progress recorder with benchmark-appropriate settings
+		sampleSize := int(float64(messagesPerStream) * (intervalPercent / 100.0))
+		r := NewProgressRecorder(b, numStreams, totalMessages, sampleSize, 500*time.Millisecond)
+		defer r.Close()
+
+		var wg sync.WaitGroup
+		wg.Add(numStreams)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Launch streams
+		for i := 0; i < numStreams; i++ {
+			go func(streamID int) {
+				defer wg.Done()
+
+				stream, err := client.BidiStream(ctx)
+				if err != nil {
+					b.Errorf("Stream %d: Failed to start bidi stream: %v", streamID, err)
+					return
+				}
+
+				// Send goroutine
+				go func() {
+					for j := 0; j < messagesPerStream; j++ {
+						msg := fmt.Sprintf("Stream %d, Message %d", streamID, j)
+						if err := stream.Send(&pb.Request{Message: msg}); err != nil {
+							b.Errorf("Stream %d: Failed to send: %v", streamID, err)
+							return
+						}
+						r.RecordProgress(streamID, j, true)
+					}
+					stream.CloseSend()
+				}()
+
+				// Receive messages
+				received := 0
+				for {
+					_, err := stream.Recv()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						b.Errorf("Stream %d: Failed to receive: %v", streamID, err)
+						return
+					}
+					received++
+					r.RecordProgress(streamID, received, false)
+				}
+
+				if received != messagesPerStream {
+					b.Errorf("Stream %d: Got %d messages, want %d", streamID, received, messagesPerStream)
+				}
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Collect final memory stats
+		runtime.ReadMemStats(&memStats)
+		b.ReportMetric(float64(memStats.TotalAlloc-startAlloc)/float64(totalMessages), "B/msg")
+		// Note: Don't report msgs/sec here as b.N controls the iterations
+	}
+}
+
+func newTestServer(b testing.TB) (net.Listener, func()) {
+	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
+	if err != nil {
+		b.Fatalf("failed to load test certs: %v", err)
+	}
+	b.Logf("Creating new TCP listener...")
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		b.Fatalf("failed to create TLS listener: %v", err)
+	}
+
+	b.Logf("Creating new grpc TLS server...")
+	s := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			NextProtos:   []string{"h2"},
+			GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
+				b.Logf("[Server] TLS ClientHello from %v: Version=%x, CipherSuites=%v, LocalAddr=%s",
+					info.Conn.RemoteAddr(),
+					info.SupportedVersions,
+					info.CipherSuites,
+					info.Conn.LocalAddr())
+				b.Logf("Server got ClientHello with ALPN protos: %v", info.SupportedProtos)
+				return nil, nil // return nil to use default config
+			},
+		})),
+		grpc.StatsHandler(&StatsHandler{t: b}),
+	)
+	srv := &testServer{t: b}
+	pb.RegisterTestServiceServer(s, srv)
+	go s.Serve(lis)
+	return lis, func() {
+		s.Stop()
+		lis.Close()
+	}
+}
+
+func newClientOpts(b testing.TB) []grpc.DialOption {
+	var clientOpts []grpc.DialOption
+	if *useNetDial {
+		b.Log("Running tests with net.Dialer")
+		creds := credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true,
+			NextProtos:         []string{"h2"},
+		})
+		clientOpts = []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	} else {
+		b.Log("Running tests with fipstls.Dialer")
+		var fipsOpts []fipstls.DialOption
+		if *enableConnTrace {
+			fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
+		}
+		dialFn, err := fipstls.NewGrpcDialFn(
+			fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
+			fipsOpts...)
+		if err != nil {
+			b.Fatalf("Failed to create grpc dialer: %v", err)
+		}
+		clientOpts = []grpc.DialOption{
+			grpc.WithContextDialer(dialFn),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
+	}
+	return clientOpts
+}
+
+// newTestClientServer creates a test server and client, returning cleanup function
+func newTestClientServer(b testing.TB) (pb.TestServiceClient, func()) {
+	lis, cleanupSrv := newTestServer(b)
+	b.Log("Creating new client...")
+
+	conn, err := grpc.NewClient(
+		lis.Addr().String(),
+		newClientOpts(b)...,
+	)
+	if err != nil {
+		b.Fatalf("failed to create client: %v", err)
+	}
+	cleanup := func() {
+		conn.Close()
+		cleanupSrv()
+	}
+	return pb.NewTestServiceClient(conn), cleanup
 }

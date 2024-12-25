@@ -2,18 +2,15 @@ package testutils
 
 import (
 	"runtime"
+	"testing"
 	"time"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
-type testLogger interface {
-	Logf(format string, args ...any)
-}
-
 // LeadCheckLSAN will check for memory leaks if tests are run with 'go test -asan' address sanitizer.
 // This should be run at the very end of the Test.
-func LeakCheckLSAN(t testLogger) {
+func LeakCheckLSAN(t testing.TB) {
 	t.Logf("checking for memory leaks if address sanitizer enabled w/ 'go test -asan ...'")
 	for range 5 {
 		// Run GC a few times to avoid false positives in leak detection.

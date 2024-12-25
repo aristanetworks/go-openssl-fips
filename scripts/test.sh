@@ -17,6 +17,14 @@ case "$1" in
     ./test-client -test.v -test.count 10
     break
     ;;
+-g|--grpc)
+    cd fipstls
+    GODEBUG=http2debug=2,http2client=2,http2server=2,netdns=debug go test -timeout=15s -v -failfast -asan -count=10 -run TestGrpcDial .
+    GODEBUG=http2debug=2,http2client=2,http2server=2,netdns=debug go test -timeout=15s -v -failfast -asan -count=10 -run TestGrpcClient .
+    go test -timeout=30s -v -failfast -asan -count=1 -run TestGrpcBidiStress .
+    cd ..
+    break
+    ;;
 -t|--trace)
     mkdir -p ./test/trace
     go test -tags netgo -race -c -o test-client ./fipstls/client_test.go
