@@ -1,4 +1,3 @@
-//go:generate go run certs/gencert.go certs/
 package testutils
 
 import (
@@ -17,18 +16,12 @@ import (
 	"time"
 )
 
-// TestServer is a test HTTPS server with tracing capabilities.
+// TestServer is a test HTTPS server with tracing.
 type TestServer struct {
-	t     *testing.T
-	trace *ServerTrace
+	t testing.TB
 	*httptest.Server
 	URL    string
 	CaFile string
-}
-
-// ServerTrace holds trace events for server-side operations
-type ServerTrace struct {
-	t *testing.T
 }
 
 var (
@@ -42,90 +35,97 @@ var (
 
 	// Certificate parsing is done once at init
 	serverCert tls.Certificate
-	certOnce   sync.Once
+	createOnce sync.Once
 	certErr    error
 )
 
 func init() {
-	certOnce.Do(func() {
+	createOnce.Do(func() {
 		serverCert, certErr = tls.X509KeyPair(certBytes, keyBytes)
 	})
 }
 
-// TraceListener wraps net.Listener to trace accept events
-type TraceListener struct {
+// TestListener wraps net.Listener to trace accept events
+type TestListener struct {
 	net.Listener
-	trace *ServerTrace
+	t testing.TB
 }
 
-func (l *TraceListener) Accept() (net.Conn, error) {
+func (l *TestListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
-		l.trace.t.Logf("[Server] Accept error: %v", err)
+		l.t.Logf("[Server] Accept error: %v", err)
 		return conn, err
 	}
 
-	l.trace.t.Logf("[Server] Accepted connection from: %v", conn.RemoteAddr())
-	return &TraceConn{Conn: conn, trace: l.trace}, nil
+	l.t.Logf("[Server] Accepted connection from: %v", conn.RemoteAddr())
+	return &TestConn{Conn: conn, t: l.t}, nil
 }
 
-// TraceConn wraps net.Conn to trace connection events
-type TraceConn struct {
+// TestConn wraps net.Conn to trace connection events
+type TestConn struct {
 	net.Conn
-	trace *ServerTrace
+	t testing.TB
 }
 
-func (c *TraceConn) Read(b []byte) (n int, err error) {
-	c.trace.t.Logf("[Server] Read from %v begin...", c.Conn.RemoteAddr())
-	defer c.trace.t.Logf("[Server] Read from %v end...", c.Conn.RemoteAddr())
-	c.trace.t.Logf("[Server] Attempting to read %v bytes", len(b))
+func (c *TestConn) Read(b []byte) (n int, err error) {
+	c.t.Logf("[Server] Read from %v begin...", c.Conn.RemoteAddr())
+	defer c.t.Logf("[Server] Read from %v end...", c.Conn.RemoteAddr())
+	c.t.Logf("[Server] Attempting to read %v bytes", len(b))
 	n, err = c.Conn.Read(b)
 	if err != nil && err.Error() != "EOF" {
-		c.trace.t.Logf("[Server] Read error from %v: %v", c.Conn.RemoteAddr(), err)
+		c.t.Logf("[Server] Read error from %v: %v", c.Conn.RemoteAddr(), err)
 	}
 	return n, err
 }
 
-func (c *TraceConn) Write(b []byte) (n int, err error) {
-	c.trace.t.Logf("[Server] Write to %v begin...", c.Conn.RemoteAddr())
-	defer c.trace.t.Logf("[Server] Write to %v end...", c.Conn.RemoteAddr())
-	c.trace.t.Logf("[Server] Attempting to write %v bytes", len(b))
+func (c *TestConn) Write(b []byte) (n int, err error) {
+	c.t.Logf("[Server] Write to %v begin...", c.Conn.RemoteAddr())
+	defer c.t.Logf("[Server] Write to %v end...", c.Conn.RemoteAddr())
+	c.t.Logf("[Server] Attempting to write %v bytes", len(b))
 	n, err = c.Conn.Write(b)
 	if err != nil {
-		c.trace.t.Logf("[Server] Write error to %v: %v", c.Conn.RemoteAddr(), err)
+		c.t.Logf("[Server] Write error to %v: %v", c.Conn.RemoteAddr(), err)
 	}
 	return n, err
 }
 
-func (c *TraceConn) Close() error {
-	c.trace.t.Logf("[Server] Close of %v begin...", c.Conn.RemoteAddr())
-	defer c.trace.t.Logf("[Server] Close of %v end...", c.Conn.RemoteAddr())
-	c.trace.t.Logf("[Server] Closing connection from: %v", c.Conn.RemoteAddr())
+func (c *TestConn) Close() error {
+	c.t.Logf("[Server] Close of %v begin...", c.Conn.RemoteAddr())
+	defer c.t.Logf("[Server] Close of %v end...", c.Conn.RemoteAddr())
+	c.t.Logf("[Server] Closing connection from: %v", c.Conn.RemoteAddr())
 	return c.Conn.Close()
 }
 
-// tracingHandler wraps an http.Handler with tracing
-func tracingHandler(trace *ServerTrace, handler http.Handler) http.Handler {
+// tracingHandler wraps an http.Handler with tracing.
+func tracingHandler(trace testing.TB, handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		trace.t.Logf("[Server] Handling %s request to %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-		trace.t.Logf("[Server] Request headers: %v", r.Header)
+		trace.Logf("[Server] Handling %s request to %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		trace.Logf("[Server] Request headers: %v", r.Header)
 
 		start := time.Now()
 		handler.ServeHTTP(w, r)
 		duration := time.Since(start)
 
-		trace.t.Logf("[Server] Completed %s %s in %v", r.Method, r.URL.Path, duration)
+		trace.Logf("[Server] Completed %s %s in %v", r.Method, r.URL.Path, duration)
 	})
 }
 
+type noopTB struct {
+	testing.TB
+}
+
+func (noopTB) Logf(format string, args ...any) {}
+
 // NewServer creates a new test HTTPS server with tracing.
-func NewServer(t *testing.T) *TestServer {
+func NewServer(t testing.TB, trace bool) *TestServer {
 	if certErr != nil {
 		t.Fatal(certErr)
 	}
-
-	trace := &ServerTrace{t: t}
-	ts := &TestServer{t: t, trace: trace}
+	if !trace {
+		t = noopTB{}
+	}
+	ts := &TestServer{t: t}
 
 	mux := http.NewServeMux()
 
@@ -187,9 +187,9 @@ func NewServer(t *testing.T) *TestServer {
 		json.NewEncoder(w).Encode(response)
 	})
 
-	server := httptest.NewUnstartedServer(tracingHandler(trace, mux))
+	server := httptest.NewUnstartedServer(tracingHandler(t, mux))
 	originalListener := server.Listener
-	server.Listener = &TraceListener{Listener: originalListener, trace: trace}
+	server.Listener = &TestListener{Listener: originalListener, t: t}
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},

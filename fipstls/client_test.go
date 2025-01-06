@@ -23,8 +23,8 @@ import (
 
 // TestSSLClientGet
 func TestSSLClientGet(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
-	ts := testutils.NewServer(t)
+	defer testutils.LeakCheck(t)
+	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
 	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
@@ -97,8 +97,8 @@ func TestSSLClientGet(t *testing.T) {
 
 // TestSSLClientPost
 func TestSSLClientPost(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
-	ts := testutils.NewServer(t)
+	defer testutils.LeakCheck(t)
+	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
 	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
@@ -148,7 +148,7 @@ func TestSSLClientPost(t *testing.T) {
 }
 
 func TestSSLClientPostTrace(t *testing.T) {
-	ts := testutils.NewServer(t)
+	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
 	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
@@ -198,7 +198,7 @@ func TestSSLClientPostTrace(t *testing.T) {
 
 func TestRoundTripSSL(t *testing.T) {
 	t.Skip("local testing only")
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	client, err := fipstls.NewClient(fipstls.NewCtx(), fipstls.WithDialTimeout(10*time.Second))
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +272,7 @@ type Progress struct {
 }
 
 func TestStreamJSON(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	client, err := fipstls.NewClient(fipstls.NewCtx())
 	if err != nil {
 		t.Fatal(err)
@@ -302,36 +302,36 @@ func TestStreamJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			url := fmt.Sprintf("https://httpbingo.org/stream/%d", tt.n)
-			progressChan := make(chan Progress, 1)
-			messagesChan := make(chan Response, tt.n)
-			errorChan := make(chan error, 1)
+			progCh := make(chan Progress, 1)
+			respCh := make(chan Response, tt.n)
+			errCh := make(chan error, 1)
 
 			go func() {
-				if err := streamWithProgress(t, client, url, progressChan, messagesChan); err != nil {
-					errorChan <- err
-					close(messagesChan)
+				if err := streamWithProgress(t, client, url, progCh, respCh); err != nil {
+					errCh <- err
+					close(respCh)
 					return
 				}
-				close(messagesChan)
-				close(errorChan)
+				close(respCh)
+				close(errCh)
 			}()
 
 			go func() {
-				for progress := range progressChan {
+				for prog := range progCh {
 					safeLog("Progress: Messages=%d, Bytes=%d, Speed=%.2f KB/s",
-						progress.MessagesRead,
-						progress.BytesRead,
-						progress.BytesPerSec/1024)
+						prog.MessagesRead,
+						prog.BytesRead,
+						prog.BytesPerSec/1024)
 				}
 			}()
 
-			var messages []Response
-			for msg := range messagesChan {
-				safeLog("Received message: %+v", msg)
-				messages = append(messages, msg)
+			var resp []Response
+			for r := range respCh {
+				safeLog("Received message: %+v", r)
+				resp = append(resp, r)
 			}
 
-			if err := <-errorChan; err != nil {
+			if err := <-errCh; err != nil {
 				if tt.expectSuccess {
 					t.Errorf("Expected success but got error: %v", err)
 				}
@@ -339,12 +339,12 @@ func TestStreamJSON(t *testing.T) {
 			}
 
 			// Verify number of messages
-			if len(messages) != tt.n {
-				t.Errorf("Expected %d messages, got %d", tt.n, len(messages))
+			if len(resp) != tt.n {
+				t.Errorf("Expected %d messages, got %d", tt.n, len(resp))
 			}
 
 			// Verify message IDs are sequential
-			for i, msg := range messages {
+			for i, msg := range resp {
 				if msg.ID != i {
 					t.Errorf("Message ID mismatch: expected %d, got %d", i, msg.ID)
 				}
@@ -353,7 +353,7 @@ func TestStreamJSON(t *testing.T) {
 	}
 }
 
-func streamWithProgress(t *testing.T, client *http.Client, url string, progressChan chan<- Progress, messagesChan chan<- Response) error {
+func streamWithProgress(t *testing.T, client *http.Client, url string, progCh chan<- Progress, respCh chan<- Response) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
@@ -372,7 +372,7 @@ func streamWithProgress(t *testing.T, client *http.Client, url string, progressC
 
 	decoder := json.NewDecoder(resp.Body)
 	var bytesRead int64
-	var messagesRead int64
+	var read int64
 	startTime := time.Now()
 	lastUpdate := startTime
 
@@ -386,34 +386,34 @@ func streamWithProgress(t *testing.T, client *http.Client, url string, progressC
 			return fmt.Errorf("decoding response: %w", err)
 		}
 
-		messagesRead++
+		read++
 		bytesRead = decoder.InputOffset()
-		messagesChan <- response
+		respCh <- response
 
 		now := time.Now()
 		duration := now.Sub(lastUpdate)
 		if duration >= 100*time.Millisecond {
 			progress := Progress{
-				MessagesRead: messagesRead,
+				MessagesRead: read,
 				TotalBytes:   resp.ContentLength,
 				BytesRead:    bytesRead,
 				BytesPerSec:  float64(bytesRead) / time.Since(startTime).Seconds(),
 				LastUpdate:   now,
 			}
-			progressChan <- progress
+			progCh <- progress
 			lastUpdate = now
 		}
 	}
 
 	progress := Progress{
-		MessagesRead: messagesRead,
+		MessagesRead: read,
 		TotalBytes:   resp.ContentLength,
 		BytesRead:    bytesRead,
 		BytesPerSec:  float64(bytesRead) / time.Since(startTime).Seconds(),
 		LastUpdate:   time.Now(),
 	}
-	progressChan <- progress
-	close(progressChan)
+	progCh <- progress
+	close(progCh)
 
 	return nil
 }
@@ -426,7 +426,7 @@ var (
 )
 
 func BenchmarkClientSSL(b *testing.B) {
-	defer testutils.LeakCheckLSAN(b)
+	defer testutils.LeakCheck(b)
 	osslClient, _ := fipstls.NewClient(fipstls.NewCtx())
 
 	b.ResetTimer()
@@ -491,7 +491,7 @@ func BenchmarkClientSSL(b *testing.B) {
 }
 
 func BenchmarkClientCachedSSL(b *testing.B) {
-	defer testutils.LeakCheckLSAN(b)
+	defer testutils.LeakCheck(b)
 	ctx, err := fipstls.NewUnsafeCtx()
 	if err != nil {
 		b.Fatal(err)

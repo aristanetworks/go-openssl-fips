@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -20,31 +19,20 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils/proto"
-
-	"github.com/aristanetworks/go-openssl-fips/fipstls"
-	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/stats"
-)
 
-var (
-	useNetDial         = flag.Bool("netdial", false, "Use default net.Dialer")
-	enableConnTrace    = flag.Bool("conntrace", false, "Enable connection tracing")
-	enableProgRecorder = flag.Bool("showprog", false, "Enable progress recorder output")
+	"github.com/aristanetworks/go-openssl-fips/fipstls"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
+	pb "github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils/proto"
 )
-
-func TestMain(m *testing.M) {
-	testing.Init()
-	m.Run()
-}
 
 func TestDialTimeout(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	// Create and start the server directly
-	ts := testutils.NewServer(t)
+	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
 	u, err := url.Parse(ts.URL)
@@ -53,7 +41,7 @@ func TestDialTimeout(t *testing.T) {
 	}
 
 	opts := []fipstls.DialOption{}
-	if *enableConnTrace {
+	if *enableClientTrace {
 		opts = append(opts, fipstls.WithConnTracingEnabled())
 	}
 
@@ -162,10 +150,10 @@ func TestDialTimeout(t *testing.T) {
 }
 
 func TestDialError(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 
 	opts := []fipstls.DialOption{}
-	if *enableConnTrace {
+	if *enableClientTrace {
 		opts = append(opts, fipstls.WithConnTracingEnabled())
 	}
 
@@ -283,7 +271,7 @@ func (h *StatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 }
 
 func TestGrpcDial(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	lis, cleanupSrv := newTestServer(t)
 	defer cleanupSrv()
 
@@ -292,7 +280,7 @@ func TestGrpcDial(t *testing.T) {
 
 	t.Log("Creating new DialFn")
 	fipsOpts := []fipstls.DialOption{}
-	if *enableConnTrace {
+	if *enableClientTrace {
 		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
 	}
 	dialFn, err := fipstls.NewGrpcDialFn(
@@ -343,7 +331,7 @@ func TestGrpcDial(t *testing.T) {
 }
 
 func TestGrpcClient(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	client, cleanup := newTestClientServer(t)
 	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -458,10 +446,10 @@ type recorder interface {
 	io.Closer
 }
 
-type EmptyRecorder struct{}
+type emptyRecorder struct{}
 
-func (r *EmptyRecorder) RecordProgress(streamID int, msgCount int, isSender bool) {}
-func (r *EmptyRecorder) Close() error                                             { return nil }
+func (emptyRecorder) RecordProgress(streamID int, msgCount int, isSender bool) {}
+func (emptyRecorder) Close() error                                             { return nil }
 
 // StreamEvent represents a progress update from a single stream.
 type StreamEvent struct {
@@ -493,7 +481,7 @@ type ProgressRecorder struct {
 //   - intervalSize: number of messages that constitute one interval
 func NewProgressRecorder(t testing.TB, numStreams, numMessages, sampleSize int, runPeriod time.Duration) recorder {
 	if !*enableProgRecorder {
-		return &EmptyRecorder{}
+		return &emptyRecorder{}
 	}
 	pr := &ProgressRecorder{
 		t:            t,
@@ -582,7 +570,10 @@ func (pr *ProgressRecorder) Close() error {
 }
 
 func TestGrpcBidiStress(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	if !*runStressTest {
+		t.Skip("Skipping... to run this, use '-stress'")
+	}
+	defer testutils.LeakCheck(t)
 	client, cleanup := newTestClientServer(t)
 	defer cleanup()
 
@@ -738,7 +729,6 @@ func BenchmarkGrpcBidiStream(b *testing.B) {
 		// Collect final memory stats
 		runtime.ReadMemStats(&memStats)
 		b.ReportMetric(float64(memStats.TotalAlloc-startAlloc)/float64(totalMessages), "B/msg")
-		// Note: Don't report msgs/sec here as b.N controls the iterations
 	}
 }
 
@@ -791,7 +781,7 @@ func newClientOpts(b testing.TB) []grpc.DialOption {
 	} else {
 		b.Log("Running tests with fipstls.Dialer")
 		var fipsOpts []fipstls.DialOption
-		if *enableConnTrace {
+		if *enableClientTrace {
 			fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
 		}
 		dialFn, err := fipstls.NewGrpcDialFn(

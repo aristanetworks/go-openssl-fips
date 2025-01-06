@@ -14,14 +14,19 @@ import (
 )
 
 func TestTransportConcurrency(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
-	ts := testutils.NewServer(t)
+	defer testutils.LeakCheck(t)
+	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
 	t.Run("SSL Transport", func(t *testing.T) {
+		opts := []fipstls.DialOption{}
+		if *enableClientTrace {
+			opts = append(opts, fipstls.WithConnTracingEnabled())
+		}
+
 		client, err := fipstls.NewClient(
 			fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-			fipstls.WithConnTracingEnabled())
+			opts...)
 		if err != nil {
 			t.Fatal(err)
 		}
