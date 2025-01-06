@@ -22,7 +22,7 @@ var (
 )
 
 var (
-	initOnce sync.Once
+	initOnce *sync.Once = new(sync.Once)
 	initErr  error
 )
 
@@ -77,9 +77,17 @@ func CheckVersion(version string) (exists, fips bool) {
 // library libcrypto.so.1.1.1k-fips.
 func Init(file string) error {
 	initOnce.Do(func() {
+		if file == "" {
+			file = GetVersion()
+		}
 		vMajor, vMinor, vPatch, initErr = opensslInit(file)
 	})
 	return initErr
+}
+
+// Reset resets initOnce. Used for testing only.
+func Reset() {
+	initOnce = new(sync.Once)
 }
 
 func utoa(n uint) string {

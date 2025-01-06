@@ -2,7 +2,7 @@
 
 #include <stdlib.h> // size_t
 
-#include "libssl_shim.h"
+#include "shim.h"
 
 // Suppress warnings about unused parameters.
 #define UNUSED(x) (void)(x)

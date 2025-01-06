@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestCheckVersion(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	v := libssl.GetVersion()
 	exists, fips := libssl.CheckVersion(v)
 	if !exists {
@@ -48,7 +48,7 @@ func TestCheckVersion(t *testing.T) {
 }
 
 func TestSSL_connect(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	v := libssl.GetVersion()
 	err := libssl.Init(v)
 	if err != nil {
@@ -109,7 +109,7 @@ func TestSSL_connect(t *testing.T) {
 }
 
 func TestBlockingClient(t *testing.T) {
-	defer testutils.LeakCheckLSAN(t)
+	defer testutils.LeakCheck(t)
 	v := libssl.GetVersion()
 	err := libssl.Init(v)
 	if err != nil {
