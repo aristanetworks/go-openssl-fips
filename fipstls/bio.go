@@ -2,7 +2,6 @@ package fipstls
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"syscall"
 
@@ -19,6 +18,11 @@ type BIO struct {
 	localAddr  net.Addr
 	remoteAddr net.Addr
 }
+
+const (
+	SOCK_BLOCK = iota
+	SOCK_NONBLOCK
+)
 
 // NewBIO will create a new [libssl.BIO] connected to the host. It can be either blocking (mode=0)
 // or non-blocking (mode=1).
@@ -43,7 +47,6 @@ func NewBIO(addr, network string, mode int) (b *BIO, err error) {
 		return b, err
 	}
 	b.closer = newOnceCloser(func() error {
-		log.Println("BIO closer called")
 		return libssl.BIOFree(b.bio)
 	})
 	return b, nil

@@ -5,8 +5,6 @@ import (
 	"errors"
 	"net"
 	"time"
-
-	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
 // DefaultNetwork is the default network to dial connections over.
@@ -113,8 +111,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 
 // NewGrpcDialFn returns a dialer function for grpc to create [Conn] connections.
 // The [Context] should not be nil.
-func NewGrpcDialFn(sslCtx *Context, opts ...DialOption) (func(context.Context,
-	string) (net.Conn, error), error) {
+func NewGrpcDialFn(sslCtx *Context, opts ...DialOption) (func(context.Context, string) (net.Conn, error), error) {
 	d, err := NewDialer(sslCtx, opts...)
 	if err != nil {
 		return nil, err
@@ -148,10 +145,9 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 	ch := make(chan bioResult)
 	go func() {
 		// create non-blocking BIO
-		b, err := NewBIO(addr, network, 1)
+		b, err := NewBIO(addr, network, SOCK_NONBLOCK)
 		ch <- bioResult{b, err}
 	}()
-
 	select {
 	case <-ctx.Done():
 		return &BIO{closer: noopCloser{}}, ctx.Err()
@@ -178,7 +174,6 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	conn.trace("Post-Handshake negotiated protocols: " + libssl.SSLStatusALPN(conn.ssl))
 	return conn, nil
 }
 
