@@ -3,18 +3,7 @@ package fipstls
 import (
 	"io"
 	"sync"
-
-	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
-
-// runWithLockedOSThread ensures the given function executes with the goroutine
-// locked to an OS thread.
-func runWithLockedOSThread(fn func() error) error {
-	// runtime.LockOSThread()
-	// defer runtime.UnlockOSThread()
-	libssl.SSLClearError()
-	return fn()
-}
 
 // Closer is [io.Closer] that will return the closer error.
 type Closer interface {
@@ -27,9 +16,9 @@ type Closer interface {
 // noopCloser is the default closer that does nothing.
 type noopCloser struct{}
 
-func (noopCloser) Err() error              { return nil }
-func (noopCloser) Close() error            { return nil }
-func (n noopCloser) Done() <-chan struct{} { return nil }
+func (noopCloser) Err() error            { return nil }
+func (noopCloser) Close() error          { return nil }
+func (noopCloser) Done() <-chan struct{} { return nil }
 
 // onceCloser will call closeFunc once and store the return error.
 type onceCloser struct {
