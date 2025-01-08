@@ -73,8 +73,6 @@ enum
     GO_SSL_ERROR_WANT_ACCEPT = 8
 };
 
-typedef void *GO_X509_VERIFY_PARAM_PTR;
-
 // X509 verification flags
 enum
 {
@@ -222,6 +220,7 @@ typedef void *GO_OSSL_LIB_CTX_PTR;
 typedef void *GO_OSSL_PROVIDER_PTR;
 typedef void *GO_SSL_verify_cb_PTR;
 typedef void *GO_CRYPTO_THREADID_PTR;
+typedef void *GO_X509_VERIFY_PARAM_PTR;
 
 // #include <openssl/ssl.h>
 typedef void *GO_SSL_CTX_PTR;
@@ -316,45 +315,27 @@ typedef void *GO_BIO_METHOD_PTR;
     DEFINEFUNC(GO_SSL_PTR, SSL_new, (GO_SSL_CTX_PTR ctx), (ctx))                                                                                                                                                                                            \
     DEFINEFUNC(void, SSL_free, (GO_SSL_PTR ctx), (ctx))                                                                                                                                                                                                     \
     DEFINEFUNC(void, SSL_clear, (GO_SSL_PTR ctx), (ctx))                                                                                                                                                                                                    \
-    DEFINEFUNC(int, SSL_set_fd, (GO_SSL_PTR ssl, int fd), (ssl, fd))                                                                                                                                                                                        \
-    DEFINEFUNC(int, SSL_get_fd, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                                    \
-    DEFINEFUNC(int, SSL_set_wfd, (GO_SSL_PTR ssl, int fd), (ssl, fd))                                                                                                                                                                                       \
-    DEFINEFUNC(int, SSL_set_rfd, (GO_SSL_PTR ssl, int fd), (ssl, fd))                                                                                                                                                                                       \
     DEFINEFUNC(int, SSL_connect, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                                   \
-    DEFINEFUNC(int, SSL_write, (GO_SSL_PTR ssl, const void *buf, int num), (ssl, buf, num))                                                                                                                                                                 \
-    DEFINEFUNC(int, SSL_read, (GO_SSL_PTR ssl, void *buf, int num), (ssl, buf, num))                                                                                                                                                                        \
     DEFINEFUNC_1_1(int, SSL_write_ex, (GO_SSL_PTR s, const void *buf, size_t num, size_t *written), (s, buf, num, written))                                                                                                                                 \
-    DEFINEFUNC_1_1(int, SSL_read_ex, (GO_SSL_PTR s, void *buf, size_t num, size_t *readbytes), (s, buf, num, readbytes))                                                                                                                                    \
-    /* SSL_CTX_ctrl is needed for SSL_CTX_set_min_proto_version */                                                                                                                                                                                          \
+    DEFINEFUNC_1_1(int, SSL_read_ex, (GO_SSL_PTR s, void *buf, size_t num, size_t *readbytes), (s, buf, num, readbytes)) /* SSL_CTX_ctrl is needed for SSL_CTX_set_min_proto_version */                                                                     \
     DEFINEFUNC(long, SSL_CTX_ctrl, (GO_SSL_CTX_PTR ctx, int cmd, long larg, void *parg), (ctx, cmd, larg, parg))                                                                                                                                            \
     DEFINEFUNC(int, SSL_CTX_set_alpn_protos, (GO_SSL_CTX_PTR ctx, const unsigned char *protos, unsigned protos_len), (ctx, protos, protos_len))                                                                                                             \
     DEFINEFUNC(int, SSL_select_next_proto, (unsigned char **out, unsigned char *outlen, const unsigned char *server, unsigned int server_len, const unsigned char *client, unsigned int client_len), (out, outlen, server, server_len, client, client_len)) \
     DEFINEFUNC(void, SSL_get0_alpn_selected, (const GO_SSL_PTR ssl, const unsigned char **data, unsigned int *len), (ssl, data, len))                                                                                                                       \
     DEFINEFUNC(void, SSL_CTX_set_verify, (GO_SSL_CTX_PTR ctx, int mode, GO_SSL_verify_cb_PTR vb), (ctx, mode, vb))                                                                                                                                          \
     DEFINEFUNC(int, SSL_CTX_set_default_verify_paths, (GO_SSL_CTX_PTR ctx), (ctx))                                                                                                                                                                          \
-    DEFINEFUNC(int, SSL_CTX_load_verify_locations, (GO_SSL_CTX_PTR ctx, const char *CAfile, const char *CApath), (ctx, CAfile, CApath))                                                                                                                     \
-    /* SSL_ctrl is needed for SSL_set_tlsext_host_name */                                                                                                                                                                                                   \
+    DEFINEFUNC(int, SSL_CTX_load_verify_locations, (GO_SSL_CTX_PTR ctx, const char *CAfile, const char *CApath), (ctx, CAfile, CApath)) /* SSL_ctrl is needed for SSL_set_tlsext_host_name */                                                               \
     DEFINEFUNC(long, SSL_ctrl, (GO_SSL_PTR ctx, int cmd, long larg, void *parg), (ctx, cmd, larg, parg))                                                                                                                                                    \
     DEFINEFUNC_1_1(int, SSL_set1_host, (GO_SSL_PTR s, const char *hostname), (s, hostname))                                                                                                                                                                 \
     DEFINEFUNC(long, SSL_get_verify_result, (const GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                  \
-    DEFINEFUNC(GO_X509_VERIFY_PARAM_PTR, SSL_get0_param, (GO_SSL_PTR s), (s))                                                                                                                                                                               \
     DEFINEFUNC_1_1(uint64_t, SSL_CTX_set_options, (GO_SSL_CTX_PTR ctx, uint64_t op), (ctx, op))                                                                                                                                                             \
-    /* Used in OpenSSL <= 1.0.x */                                                                                                                                                                                                                          \
-    DEFINEFUNC(int, SSL_set1_param, (GO_SSL_PTR ssl, GO_X509_VERIFY_PARAM_PTR vpm), (ssl, vpm))                                                                                                                                                             \
-    DEFINEFUNC(GO_X509_VERIFY_PARAM_PTR, X509_VERIFY_PARAM_new, (void), ())                                                                                                                                                                                 \
-    DEFINEFUNC(void, X509_VERIFY_PARAM_free, (GO_X509_VERIFY_PARAM_PTR vpm), (vpm))                                                                                                                                                                         \
-    DEFINEFUNC(int, X509_VERIFY_PARAM_set_flags, (GO_X509_VERIFY_PARAM_PTR vpm, long flags), (vpm, flags))                                                                                                                                                  \
-    DEFINEFUNC(int, X509_VERIFY_PARAM_set1_host, (GO_X509_VERIFY_PARAM_PTR vpm, const char *name, size_t namelen), (vpm, name, namelen))                                                                                                                    \
     DEFINEFUNC(const char *, X509_verify_cert_error_string, (long n), (n))                                                                                                                                                                                  \
     DEFINEFUNC(int, SSL_get_error, (GO_SSL_PTR ssl, int ret), (ssl, ret))                                                                                                                                                                                   \
     DEFINEFUNC(void, ERR_clear_error, (void), ())                                                                                                                                                                                                           \
     DEFINEFUNC(int, SSL_shutdown, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                                  \
     DEFINEFUNC(int, SSL_get_shutdown, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                              \
     DEFINEFUNC(void, SSL_set_shutdown, (GO_SSL_PTR ssl, int mode), (ssl, mode))                                                                                                                                                                             \
-    DEFINEFUNC(GO_SSL_SESSION_PTR, SSL_get1_session, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                               \
-    DEFINEFUNC(void, SSL_SESSION_free, (GO_SSL_SESSION_PTR session), (session))                                                                                                                                                                             \
     DEFINEFUNC(void, SSL_set_connect_state, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                        \
-    DEFINEFUNC(void, SSL_set_accept_state, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                         \
     DEFINEFUNC(int, SSL_do_handshake, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                              \
     DEFINEFUNC(int, SSL_set_session, (GO_SSL_PTR ssl, GO_SSL_SESSION_PTR session), (ssl, session))                                                                                                                                                          \
     DEFINEFUNC(void, SSL_set_bio, (GO_SSL_PTR s, GO_BIO_PTR rbio, GO_BIO_PTR wbio), (s, rbio, wbio))                                                                                                                                                        \
@@ -371,11 +352,7 @@ typedef void *GO_BIO_METHOD_PTR;
     DEFINEFUNC_1_1(GO_BIO_METHOD_PTR, BIO_s_socket, (void), ())                                                                                                                                                                                             \
     DEFINEFUNC(long, BIO_int_ctrl, (GO_BIO_PTR bp, int cmd, long larg, int iarg), (bp, cmd, larg, iarg))                                                                                                                                                    \
     DEFINEFUNC(long, BIO_ctrl, (GO_BIO_PTR bp, int cmd, long larg, void *parg), (bp, cmd, larg, parg))                                                                                                                                                      \
-    DEFINEFUNC(void, BIO_free_all, (GO_BIO_PTR a), (a))                                                                                                                                                                                                     \
-    DEFINEFUNC(int, SSL_pending, (GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                                   \
-    DEFINEFUNC(int, SSL_has_pending, (GO_SSL_PTR ssl), (ssl))
-
-// TODO int SSL_renegotiate_pending(const SSL *s);
+    DEFINEFUNC(void, BIO_free_all, (GO_BIO_PTR a), (a))
 
 // Define pointers to all the used OpenSSL functions.
 // Calling C function pointers from Go is currently not supported.

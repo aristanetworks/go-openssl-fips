@@ -2,9 +2,9 @@ package libssl_test
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"runtime"
+	"syscall"
 	"testing"
 	"time"
 
@@ -72,20 +72,13 @@ func TestSSL_connect(t *testing.T) {
 	}
 	defer libssl.SSLFree(ssl)
 
-	// set up TCP connection, similar to default http.Client stack
-	conn, err := net.Dial("tcp", "example.com:443")
+	// create blocking bio
+	bio, _, err := libssl.CreateBIO("example.com", "443", syscall.AF_INET, 0)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("Failed to create BIO object:", err)
 	}
-	defer conn.Close()
-
-	// Get file descriptor (this is a duplicate fd)
-	file, _ := conn.(*net.TCPConn).File()
-	fd := int(file.Fd())
-
-	// Set the fd to this TCP fd
-	if err := libssl.SetSSLFd(ssl, fd); err != nil {
-		t.Fatal(err)
+	if err := libssl.SSLConfigureBIO(ssl, bio, "example.com"); err != nil {
+		t.Fatal("Failed to configure SSL with BIO object:", err)
 	}
 
 	// Create TLS connection
@@ -95,12 +88,12 @@ func TestSSL_connect(t *testing.T) {
 
 	// Send a request over TLS
 	request := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	if err := libssl.SSLWrite(ssl, request); err != nil {
+	if _, err := libssl.SSLWriteEx(ssl, request); err != nil {
 		t.Fatal(err)
 	}
 
 	// Receive the response over TLS
-	resp, err := libssl.SSLRead(ssl, 1024)
+	resp, _, err := libssl.SSLReadEx(ssl, 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,17 +121,11 @@ func TestBlockingClient(t *testing.T) {
 	}
 	defer libssl.SSLCtxFree(ctx)
 
-	// Configure the client to abort the handshake if certificate verification fails
-	libssl.SSLCtxSetVerify(ctx, libssl.SSL_VERIFY_PEER, libssl.SSLVerifyCallback{})
-
-	// Use the default trusted certificate store
-	if err := libssl.SSLCtxSetDefaultVerifyPaths(ctx); err != nil {
-		t.Fatal("Failed to set the default trusted certificate store:", err)
-	}
-
-	// Set minimum TLS version to TLSv1.2
-	if err := libssl.SSLCtxSetMinProtoVersion(ctx, libssl.TLS1_2_VERSION); err != nil {
-		t.Fatal("Failed to set the minimum TLS protocol version:", err)
+	if err := libssl.SSLCtxConfigure(ctx, &libssl.CtxConfig{
+		VerifyMode: libssl.SSL_VERIFY_PEER,
+		MinTLS:     libssl.TLS1_2_VERSION,
+	}); err != nil {
+		t.Fatal("Failed to configure SSLCtx:", err)
 	}
 
 	// Create an SSL object
@@ -148,30 +135,13 @@ func TestBlockingClient(t *testing.T) {
 	}
 	defer libssl.SSLFree(ssl)
 
-	// Create the underlying transport socket using net.Dial
-	network := "tcp4"
-	conn, err := net.Dial(network, net.JoinHostPort(hostname, port))
+	// create blocking bio
+	bio, _, err := libssl.CreateBIO(hostname, port, syscall.AF_INET, 0)
 	if err != nil {
-		t.Fatal("Failed to create socket connection:", err)
+		t.Fatal("Failed to create BIO object:", err)
 	}
-	defer conn.Close()
-
-	file, _ := conn.(*net.TCPConn).File()
-	fd := int(file.Fd())
-
-	// Associate the socket with the SSL object
-	if err := libssl.SetSSLFd(ssl, fd); err != nil {
-		t.Fatal("Failed to set SSL file descriptor:", err)
-	}
-
-	// Set the SNI hostname
-	if err := libssl.SSLSetTLSExtHostName(ssl, hostname); err != nil {
-		t.Fatal("Failed to set the SNI hostname:", err)
-	}
-
-	// Set the hostname for certificate verification
-	if err := libssl.SSLSet1Host(ssl, hostname); err != nil {
-		t.Fatal("Failed to set the certificate verification hostname:", err)
+	if err := libssl.SSLConfigureBIO(ssl, bio, hostname); err != nil {
+		t.Fatal("Failed to configure SSL with BIO object:", err)
 	}
 
 	// Perform the SSL handshake

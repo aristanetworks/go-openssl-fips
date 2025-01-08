@@ -1,4 +1,4 @@
-//go:build unix
+// go:build unix
 
 #include "golibssl.h"
 #include "thread_setup.h"
@@ -32,7 +32,7 @@ static void thread_id(GO_CRYPTO_THREADID_PTR tid)
     // The actual value does not matter, but should be a pointer with a valid size.
     // See https://github.com/golang-fips/openssl/pull/162
     static char stub;
-    (void) pthread_setspecific(destructor_key, &stub);
+    (void)pthread_setspecific(destructor_key, &stub);
 }
 
 static void cleanup_thread_state(void *ignored)
@@ -44,7 +44,7 @@ static void cleanup_thread_state(void *ignored)
     // variable associated with this destructor to a non-NULL value. We have to
     // clear the variable ourselves to prevent pthreads from calling the
     // destructor again for the same thread.
-    (void) pthread_setspecific(destructor_key, NULL);
+    (void)pthread_setspecific(destructor_key, NULL);
     go_openssl_threads_cleaned_up++;
 }
 
@@ -52,7 +52,7 @@ int go_openssl_thread_setup(void)
 {
     if (pthread_key_create(&destructor_key, cleanup_thread_state) != 0)
         return 0;
-    mutex_buf = malloc(go_openssl_CRYPTO_num_locks()*sizeof(pthread_mutex_t));
+    mutex_buf = malloc(go_openssl_CRYPTO_num_locks() * sizeof(pthread_mutex_t));
     if (!mutex_buf)
         return 0;
     int i;

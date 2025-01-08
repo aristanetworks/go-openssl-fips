@@ -16,9 +16,6 @@ func Init(version string) error {
 	if libsslInit {
 		return nil
 	}
-	if version == "" {
-		version = libssl.GetVersion()
-	}
 	if err := libssl.Init(version); err != nil {
 		return errors.Join(ErrLoadLibSslFailed, err)
 	}
@@ -117,15 +114,6 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 		options |= libssl.SSL_OP_NO_COMPRESSION
 	}
 
-	if err := libssl.SSLCtxSetOptions(ctx, options); err != nil {
-		return err
-	}
-	if c.TLS.NextProto == ALPNProtoH2Only {
-		if err := libssl.SSLCtxSetH2Proto(ctx); err != nil {
-			return err
-		}
-	}
-
 	// Set verification mode
 	var verifyMode int
 	switch c.TLS.VerifyMode {
@@ -141,32 +129,21 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 		verifyMode = libssl.SSL_VERIFY_PEER | libssl.SSL_VERIFY_POST_HANDSHAKE
 	}
 
-	libssl.SSLCtxSetVerify(ctx, verifyMode, libssl.SSLVerifyCallback{})
-
-	// Set protocol versions
-	if c.TLS.MinTLSVersion != 0 {
-		if err := libssl.SSLCtxSetMinProtoVersion(ctx, c.TLS.MinTLSVersion); err != nil {
-			return err
-		}
-	}
-	if c.TLS.MaxTLSVersion != 0 {
-		if err := libssl.SSLCtxSetMaxProtoVersion(ctx, c.TLS.MaxTLSVersion); err != nil {
-			return err
-		}
+	// Set h2 proto for HTTP/2 clients
+	var proto string
+	if c.TLS.NextProto == ALPNProtoH2Only {
+		proto = "h2"
 	}
 
-	if c.TLS.CaFile == "" || c.TLS.CaPath == "" {
-		// Use the default trusted certificate store
-		if err := libssl.SSLCtxSetDefaultVerifyPaths(ctx); err != nil {
-			return err
-		}
-	} else {
-		// Use specified trusted certificate store
-		if err := libssl.SSLCtxLoadVerifyLocations(ctx, c.TLS.CaFile, c.TLS.CaPath); err != nil {
-			return err
-		}
-	}
-	return nil
+	return libssl.SSLCtxConfigure(ctx, &libssl.CtxConfig{
+		MinTLS:     c.TLS.MinTLSVersion,
+		MaxTLS:     c.TLS.MaxTLSVersion,
+		Options:    options,
+		VerifyMode: verifyMode,
+		NextProto:  proto,
+		CaFile:     c.TLS.CaFile,
+		CaPath:     c.TLS.CaPath,
+	})
 }
 
 // Ctx returns a pointer to the underlying C.SSL_CTX C object.
