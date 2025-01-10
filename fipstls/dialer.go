@@ -111,7 +111,8 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 
 // NewGrpcDialFn returns a dialer function for grpc to create [Conn] connections.
 // The [Context] should not be nil.
-func NewGrpcDialFn(sslCtx *Context, opts ...DialOption) (func(context.Context, string) (net.Conn, error), error) {
+func NewGrpcDialFn(sslCtx *Context, opts ...DialOption) (func(context.Context,
+	string) (net.Conn, error), error) {
 	d, err := NewDialer(sslCtx, opts...)
 	if err != nil {
 		return nil, err
@@ -128,6 +129,11 @@ func NewGrpcDialFn(sslCtx *Context, opts ...DialOption) (func(context.Context, s
 	}, nil
 }
 
+type bioResult struct {
+	bio *BIO
+	err error
+}
+
 func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error) {
 	deadline := d.deadline(ctx, time.Now())
 	if !deadline.IsZero() {
@@ -138,10 +144,6 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 		}
 	}
 
-	type bioResult struct {
-		bio *BIO
-		err error
-	}
 	ch := make(chan bioResult)
 	go func() {
 		// create non-blocking BIO
