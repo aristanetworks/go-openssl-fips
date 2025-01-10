@@ -9,7 +9,9 @@ import (
 )
 
 func TestInitFailure(t *testing.T) {
-	t.Skip("need to test in docker env")
+	if !*runFallbackTest {
+		t.Skip("Skipping... to run this, use '-fallbacktest'")
+	}
 	tests := []struct {
 		name       string
 		expErr     bool

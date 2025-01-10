@@ -21,13 +21,23 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
+func getClientOpts() []fipstls.DialOption {
+	o := []fipstls.DialOption{}
+	if *enableClientTrace {
+		o = append(o, fipstls.WithConnTracingEnabled())
+	}
+	return o
+}
+
 // TestSSLClientGet
 func TestSSLClientGet(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
+		getClientOpts()...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,11 +107,13 @@ func TestSSLClientGet(t *testing.T) {
 
 // TestSSLClientPost
 func TestSSLClientPost(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
+		getClientOpts()...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,10 +160,12 @@ func TestSSLClientPost(t *testing.T) {
 }
 
 func TestSSLClientPostTrace(t *testing.T) {
+	initTest(t)
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)))
+	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
+		getClientOpts()...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,8 +212,9 @@ func TestSSLClientPostTrace(t *testing.T) {
 
 func TestRoundTripSSL(t *testing.T) {
 	t.Skip("local testing only")
+	initTest(t)
 	defer testutils.LeakCheck(t)
-	client, err := fipstls.NewClient(fipstls.NewCtx(), fipstls.WithDialTimeout(10*time.Second))
+	client, err := fipstls.NewClient(fipstls.NewCtx(), getClientOpts()...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +225,8 @@ func TestRoundTripSSL(t *testing.T) {
 			t.Logf("[Client] Started handshake: url=%s", "https://httpbingo.org")
 		},
 		TLSHandshakeDone: func(connState tls.ConnectionState, err error) {
-			t.Logf("[Client] Completed handshake: url=%s state=%+v err=%v", "https://httpbingo.org", connState, err)
+			t.Logf("[Client] Completed handshake: url=%s state=%+v err=%v", "https://httpbingo.org",
+				connState, err)
 		},
 		ConnectStart: func(network, addr string) {
 			t.Logf("[Client] Started connection to address: %s:%s\n", network, addr)
@@ -272,8 +288,9 @@ type Progress struct {
 }
 
 func TestStreamJSON(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
-	client, err := fipstls.NewClient(fipstls.NewCtx())
+	client, err := fipstls.NewClient(fipstls.NewCtx(), getClientOpts()...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +370,8 @@ func TestStreamJSON(t *testing.T) {
 	}
 }
 
-func streamWithProgress(t *testing.T, client *http.Client, url string, progCh chan<- Progress, respCh chan<- Response) error {
+func streamWithProgress(t *testing.T, client *http.Client, url string, progCh chan<- Progress,
+	respCh chan<- Response) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
@@ -426,8 +444,9 @@ var (
 )
 
 func BenchmarkClientSSL(b *testing.B) {
+	initTest(nil)
 	defer testutils.LeakCheck(b)
-	osslClient, _ := fipstls.NewClient(fipstls.NewCtx())
+	osslClient, _ := fipstls.NewClient(fipstls.NewCtx(), getClientOpts()...)
 
 	b.ResetTimer()
 
@@ -491,6 +510,7 @@ func BenchmarkClientSSL(b *testing.B) {
 }
 
 func BenchmarkClientCachedSSL(b *testing.B) {
+	initTest(nil)
 	defer testutils.LeakCheck(b)
 	ctx, err := fipstls.NewUnsafeCtx()
 	if err != nil {

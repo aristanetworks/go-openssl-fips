@@ -59,6 +59,8 @@ There are two options initializing the `fipstls.Context`:
 - [`fipstls.NewCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewCtx) - this will initialize the `fipstls.Context` with TLS configuration options only, but not create the underlying `C.SSL_CTX` object. Instead, the `fipstls.Dialer` will create and cleanup the `C.SSL_CTX` every new `fipstls.Conn` connection.
 - [`fipstls.NewUnsafeCtx`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#NewUnsafeCtx) - this will both initialize and create the underlying `C.SSL_CTX` object once, and the `fipstls.Dialer` will reuse it in creating multiple `fipstls.Conn` connections.
 
+Use the [`fipstls.ConfigOption`](https://pkg.go.dev/github.com/aristanetworks/go-openssl-fips/fipstls#ConfigOption) to configure the `fipstls.Context`.
+
 Creating the context once and reusing it is considered best practice by OpenSSL developers, as internally to OpenSSL various items are shared between multiple SSL objects are cached in the C.SSL_CTX. The drawback is that the caller will be responsible for closing the context which will cleanup the C memory allocated for it.
 
 ### 1. Creating a Default Client

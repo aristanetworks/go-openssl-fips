@@ -14,7 +14,7 @@ import (
 // LeakCheck will check for memory leaks if tests are run with 'go test -asan' address sanitizer.
 // This should be run at the very end of the Test.
 func LeakCheck(t testing.TB) {
-	t.Logf("checking for memory leaks if address sanitizer enabled w/ 'go test -asan ...'")
+	t.Log("Checking for memory leaks...")
 	for range 5 {
 		// Run GC a few times to avoid false positives in leak detection.
 		runtime.GC()

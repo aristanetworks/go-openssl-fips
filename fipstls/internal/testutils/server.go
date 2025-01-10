@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -220,8 +221,12 @@ func NewServer(t testing.TB, trace bool) *TestServer {
 	server.StartTLS()
 
 	ts.Server = server
-	ts.URL = server.URL
 	ts.CaFile = caFile
+
+	// always use "localhost" as the host in the URL to avoid host verification errors
+	parsedURL, _ := url.Parse(server.URL)
+	parsedURL.Host = net.JoinHostPort("localhost", parsedURL.Port())
+	ts.URL = parsedURL.String()
 
 	return ts
 }

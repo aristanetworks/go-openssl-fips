@@ -7,6 +7,19 @@ import (
 	"unsafe"
 )
 
+type TraceMode int
+
+const (
+	TraceDisabled TraceMode = iota
+	TraceEnabled
+)
+
+var traceMode TraceMode
+
+func SetTraceMode(v TraceMode) {
+	traceMode = v
+}
+
 type SSLMethod struct {
 	inner C.GO_SSL_METHOD_PTR
 }
@@ -60,7 +73,7 @@ func NewSSLCtx(tlsMethod *SSLMethod) (*SSLCtx, error) {
 }
 
 func SSLCtxSetH2Proto(sslCtx *SSLCtx) error {
-	if r := C.go_openssl_set_h2_alpn(sslCtx.inner); r != 0 {
+	if r := C.go_openssl_set_h2_alpn(sslCtx.inner, C.int(int(traceMode))); r != 0 {
 		return NewOpenSSLError("libssl: SSL_CTX_set_alpn_protos: could not set H2 protocol")
 	}
 	return nil
@@ -70,7 +83,7 @@ func SSLStatusALPN(ssl *SSL) string {
 	var proto [256]C.char
 	var length C.int
 
-	ret := C.go_openssl_check_alpn_status(ssl.inner, &proto[0], &length)
+	ret := C.go_openssl_check_alpn_status(ssl.inner, &proto[0], &length, C.int(int(traceMode)))
 	if ret == 0 {
 		return "no protocol selected"
 	}
@@ -112,6 +125,7 @@ func SSLCtxConfigure(ctx *SSLCtx, config *CtxConfig) error {
 		cNextProto,
 		cCaPath,
 		cCaFile,
+		C.int(int(traceMode)),
 	); r != 0 {
 		return NewOpenSSLError("libssl: ctx_configure failed")
 	}
@@ -260,7 +274,7 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 	cPort := C.CString(port)
 	defer C.free(unsafe.Pointer(cHost))
 	defer C.free(unsafe.Pointer(cPort))
-	bio := C.go_openssl_create_bio(cHost, cPort, C.int(family), C.int(mode))
+	bio := C.go_openssl_create_bio(cHost, cPort, C.int(family), C.int(mode), C.int(int(traceMode)))
 	if bio == nil {
 		return nil, -1, NewOpenSSLError("libssl: create_bio")
 	}
@@ -278,7 +292,7 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 func SSLConfigureBIO(ssl *SSL, bio *BIO, hostname string) error {
 	cHost := C.CString(hostname)
 	defer C.free(unsafe.Pointer(cHost))
-	if r := C.go_openssl_ssl_configure_bio(ssl.inner, bio.inner, cHost); r != 0 {
+	if r := C.go_openssl_ssl_configure_bio(ssl.inner, bio.inner, cHost, C.int(int(traceMode))); r != 0 {
 		return newSSLError("libssl: ssl_configure_bio", SSLGetError(ssl, int(r)))
 	}
 	return nil

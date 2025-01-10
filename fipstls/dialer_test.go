@@ -30,6 +30,7 @@ import (
 )
 
 func TestDialTimeout(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
 	// Create and start the server directly
 	ts := testutils.NewServer(t, *enableServerTrace)
@@ -150,6 +151,7 @@ func TestDialTimeout(t *testing.T) {
 }
 
 func TestDialError(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
 
 	opts := []fipstls.DialOption{}
@@ -271,6 +273,7 @@ func (h *StatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 }
 
 func TestGrpcDial(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
 	lis, cleanupSrv := newTestServer(t)
 	defer cleanupSrv()
@@ -331,6 +334,7 @@ func TestGrpcDial(t *testing.T) {
 }
 
 func TestGrpcClient(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
 	client, cleanup := newTestClientServer(t)
 	defer cleanup()
@@ -570,8 +574,9 @@ func (pr *ProgressRecorder) Close() error {
 }
 
 func TestGrpcBidiStress(t *testing.T) {
+	initTest(t)
 	if !*runStressTest {
-		t.Skip("Skipping... to run this, use '-stress'")
+		t.Skip("Skipping... to run this, use '-stresstest'")
 	}
 	defer testutils.LeakCheck(t)
 	client, cleanup := newTestClientServer(t)
@@ -646,6 +651,7 @@ func TestGrpcBidiStress(t *testing.T) {
 }
 
 func BenchmarkGrpcBidiStream(b *testing.B) {
+	initTest(nil)
 	// Setup test server and client (extracted to helper function)
 	client, cleanup := newTestClientServer(b)
 	defer cleanup()

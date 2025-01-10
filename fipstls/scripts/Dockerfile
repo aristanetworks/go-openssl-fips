@@ -29,15 +29,15 @@ EOF
 
 FROM golang-1.23-centos AS test-noossl-fallback
 
-COPY . /go/src/go-openssl
+COPY . /go/src/fipstls
 
 # check we can fallback on libdl failures
 ENV CGO_ENABLED=1
-WORKDIR /go/src/go-openssl
+WORKDIR /go/src/fipstls
 RUN <<EOF
 set -e
 
-go test -tags netgo -c -o ssl-client-glibc-2.17 ./fipstls/client_test.go
+go test -tags netgo -c -o ssl-client-glibc-2.17 fipstls_test.go client_test.go
 ldd --version
 
 # should fail
@@ -46,52 +46,26 @@ export GO_OPENSSL_VERSION_OVERRIDE="4.20"
 ./ssl-client-glibc-2.17 | grep -q "can't load libssl"
 EOF
 
-FROM golang-1.23-centos AS test-ossl1.0.2-glibc2.17
-
-# install openssl 1.0.2k
-RUN <<EOF
-set -e
-
-rpm -ivh --force \
-    https://vault.centos.org/7.9.2009/os/x86_64/Packages/openssl-1.0.2k-19.el7.x86_64.rpm \
-    https://vault.centos.org/7.9.2009/os/x86_64/Packages/openssl-libs-1.0.2k-19.el7.x86_64.rpm \
-EOF
-
-COPY . /go/src/go-openssl
-
-# run unit tests and build test binary
-ENV CGO_ENABLED=1
-WORKDIR /go/src/go-openssl
-RUN <<EOF
-set -e
-
-go test -v ./internal/libssl/...
-go test -tags netgo -c -o ssl-client-glibc-2.17 ./internal/libssl/...
-
-ldd --version
-ldd ssl-client-glibc-2.17
-./ssl-client-glibc-2.17
-EOF
-
 # test 2.17 binary on glibc 2.31
 FROM golang:1.23.2-bullseye AS test-ossl1.1.1-glibc2.31
-COPY --from=test-ossl1.0.2-glibc2.17 /go/src/go-openssl /go/src/go-openssl
+COPY --from=test-noossl-fallback /go/src/fipstls /go/src/fipstls
 
-WORKDIR /go/src/go-openssl
+WORKDIR /go/src/fipstls
 RUN <<EOF
 set -e
 
 openssl version
 ldd --version
 ldd ssl-client-glibc-2.17
-./ssl-client-glibc-2.17
+go test -tags netgo -c -o ssl-client-glibc-2.17 fipstls_test.go client_test.go
+# ./ssl-client-glibc-2.17
 EOF
 
 # test 2.17 binary on glibc 2.36
 FROM golang:1.23.2-bookworm AS test-ossl3-glibc2.36
-COPY --from=test-ossl1.0.2-glibc2.17 /go/src/go-openssl /go/src/go-openssl
+COPY --from=test-noossl-fallback /go/src/fipstls /go/src/fipstls
 
-WORKDIR /go/src/go-openssl
+WORKDIR /go/src/fipstls
 RUN <<EOF
 set -e
 
@@ -100,3 +74,21 @@ ldd --version
 ldd ssl-client-glibc-2.17
 ./ssl-client-glibc-2.17
 EOF
+
+WORKDIR /go/src/fipstls
+RUN ./scripts/test.sh -main && ./scripts/test.sh -fallback
+
+# build & test on alpine
+FROM golang:1.23.2-alpine AS test-ossl3-alpine
+
+RUN apk add --no-cache gcc musl-dev
+
+COPY . /go/src/fipstls
+
+WORKDIR /go/src/fipstls
+RUN ./scripts/test.sh -main && ./scripts/test.sh -fallback
+
+FROM test-ossl3-alpine AS cover
+
+WORKDIR /go/src/fipstls
+RUN ./scripts/test.sh -cover
