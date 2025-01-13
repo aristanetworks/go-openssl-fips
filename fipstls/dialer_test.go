@@ -46,14 +46,10 @@ func TestDialTimeout(t *testing.T) {
 		opts = append(opts, fipstls.WithConnTracingEnabled())
 	}
 
-	d, err := fipstls.NewDialer(
-		fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
+	d := fipstls.NewDialer(
+		&fipstls.Config{CaFile: ts.CaFile},
 		opts...,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	conn, err := d.DialContext(context.Background(), "tcp", u.Host)
 	if err != nil {
 		t.Fatalf("Failed to create SSLConn: %v", err)
@@ -147,28 +143,6 @@ func TestDialTimeout(t *testing.T) {
 				t.Logf("Response: %s", response)
 			}
 		})
-	}
-}
-
-func TestDialError(t *testing.T) {
-	initTest(t)
-	defer testutils.LeakCheck(t)
-
-	opts := []fipstls.DialOption{}
-	if *enableClientTrace {
-		opts = append(opts, fipstls.WithConnTracingEnabled())
-	}
-
-	// This should error
-	_, err := fipstls.NewDialer(
-		nil,
-		opts...,
-	)
-	if err == nil {
-		t.Fatalf("Expected %v error but got nil", fipstls.ErrEmptyContext)
-	}
-	if err != nil && errors.Is(err, fipstls.ErrEmptyContext) {
-		t.Logf("Got %v", fipstls.ErrEmptyContext)
 	}
 }
 
@@ -287,7 +261,7 @@ func TestGrpcDial(t *testing.T) {
 		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
 	}
 	dialFn, err := fipstls.NewGrpcDialFn(
-		fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
+		&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
 		fipsOpts...)
 	if err != nil {
 		t.Fatalf("Failed to create grpc dialer: %v", err)
@@ -304,33 +278,16 @@ func TestGrpcDial(t *testing.T) {
 	t.Log("Attempting grpc connection...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	creds := credentials.NewTLS(&tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"h2"},
-	})
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
-	}
-	if !*useNetDial {
-		t.Log("Running tests with fipstls.Dialer and not net.Dialer")
-
-		opts = append(opts,
-			grpc.WithContextDialer(dialFn),
-			grpc.WithTransportCredentials(insecure.NewCredentials()))
-	} else {
-		t.Log("Running tests with net.Dialer")
-	}
 	dialConn, err := grpc.DialContext(
 		ctx,
 		addr,
-		opts...,
+		newClientOpts(t)...,
 	)
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}
 	t.Log("Grpc dial successful")
 	defer dialConn.Close()
-
 }
 
 func TestGrpcClient(t *testing.T) {
@@ -725,7 +682,8 @@ func BenchmarkGrpcBidiStream(b *testing.B) {
 				}
 
 				if received != messagesPerStream {
-					b.Errorf("Stream %d: Got %d messages, want %d", streamID, received, messagesPerStream)
+					b.Errorf("Stream %d: Got %d messages, want %d", streamID,
+						received, messagesPerStream)
 				}
 			}(i)
 		}
@@ -739,7 +697,8 @@ func BenchmarkGrpcBidiStream(b *testing.B) {
 }
 
 func newTestServer(b testing.TB) (net.Listener, func()) {
-	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem", "./internal/testutils/certs/key.pem")
+	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem",
+		"./internal/testutils/certs/key.pem")
 	if err != nil {
 		b.Fatalf("failed to load test certs: %v", err)
 	}
@@ -786,13 +745,9 @@ func newClientOpts(b testing.TB) []grpc.DialOption {
 		clientOpts = []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 	} else {
 		b.Log("Running tests with fipstls.Dialer")
-		var fipsOpts []fipstls.DialOption
-		if *enableClientTrace {
-			fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
-		}
 		dialFn, err := fipstls.NewGrpcDialFn(
-			fipstls.NewCtx(fipstls.WithCaFile("./internal/testutils/certs/cert.pem")),
-			fipsOpts...)
+			&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
+			getDialOpts()...)
 		if err != nil {
 			b.Fatalf("Failed to create grpc dialer: %v", err)
 		}

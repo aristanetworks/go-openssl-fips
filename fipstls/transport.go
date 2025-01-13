@@ -12,12 +12,54 @@ import (
 
 // Transport implements [http.RoundTripper] by dialing TLS [Conn] using [Dialer].
 type Transport struct {
-	Dialer             *Dialer
+	// Dialer is used for creating TLS connections.
+	Dialer *Dialer
+
+	// ModifyHeaders is called in RoundTrip to modify the request headers before making the request.
+	ModifyHeaders func(*http.Header)
+
+	// DisableCompression, if true, prevents the Transport from
+	// requesting compression with an "Accept-Encoding: gzip"
+	// request header when the Request contains no existing
+	// Accept-Encoding value. If the Transport requests gzip on
+	// its own and gets a gzipped response, it's transparently
+	// decoded in the Response.Body. However, if the user
+	// explicitly requested gzip it is not automatically
+	// uncompressed.
 	DisableCompression bool
 }
 
 // RoundTrip does a single HTTP transaction. It dials a new [Conn] connection every roundtrip.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.ModifyHeaders != nil {
+		t.ModifyHeaders(&req.Header)
+	}
+
+	// Ask for a compressed version if the caller didn't set their
+	// own value for Accept-Encoding. We only attempt to
+	// uncompress the gzip stream if we were the layer that
+	// requested it.
+	requestedGzip := false
+	if !t.DisableCompression &&
+		req.Header.Get("Accept-Encoding") == "" &&
+		req.Header.Get("Range") == "" &&
+		req.Method != "HEAD" {
+		// Request gzip only, not deflate. Deflate is ambiguous and
+		// not as universally supported anyway.
+		// See: https://zlib.net/zlib_faq.html#faq39
+		//
+		// Note that we don't request this for HEAD requests,
+		// due to a bug in nginx:
+		//   https://trac.nginx.org/nginx/ticket/358
+		//   https://golang.org/issue/5522
+		//
+		// We don't request gzip if the request is for a range, since
+		// auto-decoding a portion of a gzipped document will just fail
+		// anyway. See https://golang.org/issue/8923
+		requestedGzip = true
+		req.Header.Set("Accept-Encoding", "gzip")
+	}
+
 	port := req.URL.Port()
 	if port == "" {
 		port = "443"
@@ -44,7 +86,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	if !t.DisableCompression && resp.Header.Get("Content-Encoding") == "gzip" {
+	if requestedGzip && resp.Header.Get("Content-Encoding") == "gzip" {
 		gzReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)

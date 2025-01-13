@@ -40,7 +40,7 @@ int go_openssl_version_patch(void *handle);
 int go_openssl_thread_setup(void);
 void go_openssl_load_functions(void *handle, unsigned int major, unsigned int minor, unsigned int patch);
 GO_BIO_PTR go_openssl_create_bio(const char *hostname, const char *port, int family, int mode, int trace);
-int go_openssl_ctx_configure(GO_SSL_CTX_PTR ctx, long minTLS, long maxTLS, long options, int verifyMode, const char *nextProto, const char *caPath, const char *caFile, int trace);
+int go_openssl_ctx_configure(GO_SSL_CTX_PTR ctx, long minTLS, long maxTLS, long options, int verifyMode, const char *nextProto, const char *caPath, const char *caFile, const char *certFile, const char *keyFile, int trace);
 int go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, int trace);
 int go_openssl_ssl_configure_bio(GO_SSL_PTR ssl, GO_BIO_PTR bio, const char *hostname, int trace);
 int go_openssl_set_h2_alpn(GO_SSL_CTX_PTR ctx, int trace);

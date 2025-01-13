@@ -21,14 +21,6 @@ import (
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
-func getClientOpts() []fipstls.DialOption {
-	o := []fipstls.DialOption{}
-	if *enableClientTrace {
-		o = append(o, fipstls.WithConnTracingEnabled())
-	}
-	return o
-}
-
 // TestSSLClientGet
 func TestSSLClientGet(t *testing.T) {
 	initTest(t)
@@ -36,12 +28,7 @@ func TestSSLClientGet(t *testing.T) {
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-		getClientOpts()...)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
 	trace := &httptrace.ClientTrace{
 		TLSHandshakeStart: func() {
 			t.Logf("[Client] Started handshake: url=%s", ts.URL)
@@ -112,11 +99,7 @@ func TestSSLClientPost(t *testing.T) {
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-		getClientOpts()...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -164,11 +147,7 @@ func TestSSLClientPostTrace(t *testing.T) {
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client, err := fipstls.NewClient(fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-		getClientOpts()...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -214,10 +193,7 @@ func TestRoundTripSSL(t *testing.T) {
 	t.Skip("local testing only")
 	initTest(t)
 	defer testutils.LeakCheck(t)
-	client, err := fipstls.NewClient(fipstls.NewCtx(), getClientOpts()...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	client := fipstls.NewClient(nil, getDialOpts()...)
 
 	// Add HTTP trace for debugging
 	trace := &httptrace.ClientTrace{
@@ -290,11 +266,7 @@ type Progress struct {
 func TestStreamJSON(t *testing.T) {
 	initTest(t)
 	defer testutils.LeakCheck(t)
-	client, err := fipstls.NewClient(fipstls.NewCtx(), getClientOpts()...)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	client := fipstls.NewClient(nil, getDialOpts()...)
 	tests := []struct {
 		name          string
 		n             int
@@ -446,7 +418,7 @@ var (
 func BenchmarkClientSSL(b *testing.B) {
 	initTest(nil)
 	defer testutils.LeakCheck(b)
-	osslClient, _ := fipstls.NewClient(fipstls.NewCtx(), getClientOpts()...)
+	osslClient := fipstls.NewClient(nil, getDialOpts()...)
 
 	b.ResetTimer()
 
@@ -481,79 +453,6 @@ func BenchmarkClientSSL(b *testing.B) {
 	})
 
 	b.Run("Custom OSSL Client MIXED", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if rand.Intn(2) == 0 {
-				req, _ := http.NewRequest("GET", getUrl, nil)
-				resp, err := osslClient.Transport.RoundTrip(req)
-				if err != nil {
-					b.Fatalf("GET request failed: %v", err)
-				}
-				defer resp.Body.Close()
-
-				var body map[string]interface{}
-				err = json.NewDecoder(resp.Body).Decode(&body)
-				if err != nil {
-					b.Fatalf("Invalid JSON response: %v", err)
-				}
-			} else {
-				payload := []byte(`{"key": "value"}`)
-				req, _ := http.NewRequest("POST", postUrl, bytes.NewBuffer(payload))
-				req.Header.Set("Content-Type", "application/json")
-				resp, err := osslClient.Transport.RoundTrip(req)
-				if err != nil {
-					b.Fatalf("POST request failed: %v", err)
-				}
-				defer resp.Body.Close()
-			}
-		}
-	})
-}
-
-func BenchmarkClientCachedSSL(b *testing.B) {
-	initTest(nil)
-	defer testutils.LeakCheck(b)
-	ctx, err := fipstls.NewUnsafeCtx()
-	if err != nil {
-		b.Fatal(err)
-	}
-	osslClient, err := fipstls.NewClient(ctx)
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer ctx.Close()
-	b.ResetTimer()
-
-	b.Run("Custom OSSL Client Cached GET", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			req, _ := http.NewRequest("GET", getUrl, nil)
-			resp, err := osslClient.Transport.RoundTrip(req)
-			if err != nil {
-				b.Fatalf("Request failed: %v", err)
-			}
-			defer resp.Body.Close()
-
-			var body map[string]interface{}
-			err = json.NewDecoder(resp.Body).Decode(&body)
-			if err != nil {
-				b.Fatalf("Invalid JSON response: %v", err)
-			}
-		}
-	})
-
-	b.Run("Custom OSSL Client Cached POST", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			payload := []byte(`{"key": "value"}`)
-			req, _ := http.NewRequest("POST", postUrl, bytes.NewBuffer(payload))
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := osslClient.Transport.RoundTrip(req)
-			if err != nil {
-				b.Fatalf("Request failed: %v", err)
-			}
-			defer resp.Body.Close()
-		}
-	})
-
-	b.Run("Custom OSSL Client Cached MIXED", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			if rand.Intn(2) == 0 {
 				req, _ := http.NewRequest("GET", getUrl, nil)

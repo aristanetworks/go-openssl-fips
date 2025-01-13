@@ -133,6 +133,14 @@ enum
     GO_X509_V_ERR_CERT_REJECTED = 28
 };
 
+// X509 Filetypes
+enum
+{
+    GO_X509_FILETYPE_PEM = 1,
+    GO_X509_FILETYPE_ASN1 = 2,
+    GO_X509_FILETYPE_DEFAULT = 3,
+};
+
 // SSL and SSL_CTX ctrl options
 enum
 {
@@ -325,6 +333,10 @@ typedef void *GO_BIO_METHOD_PTR;
     DEFINEFUNC(void, SSL_CTX_set_verify, (GO_SSL_CTX_PTR ctx, int mode, GO_SSL_verify_cb_PTR vb), (ctx, mode, vb))                                                                                                                                          \
     DEFINEFUNC(int, SSL_CTX_set_default_verify_paths, (GO_SSL_CTX_PTR ctx), (ctx))                                                                                                                                                                          \
     DEFINEFUNC(int, SSL_CTX_load_verify_locations, (GO_SSL_CTX_PTR ctx, const char *CAfile, const char *CApath), (ctx, CAfile, CApath)) /* SSL_ctrl is needed for SSL_set_tlsext_host_name */                                                               \
+    DEFINEFUNC(int, SSL_CTX_use_certificate_file, (GO_SSL_CTX_PTR ctx, const char *file, int type), (ctx, file, type))                                                                                                                                      \
+    DEFINEFUNC(int, SSL_CTX_use_certificate_chain_file, (GO_SSL_CTX_PTR ctx, const char *file), (ctx, file))                                                                                                                                                \
+    DEFINEFUNC(int, SSL_CTX_use_PrivateKey_file, (GO_SSL_CTX_PTR ctx, const char *file, int type), (ctx, file, type))                                                                                                                                       \
+    DEFINEFUNC(int, SSL_CTX_check_private_key, (const GO_SSL_CTX_PTR ctx), (ctx))                                                                                                                                                                           \
     DEFINEFUNC(long, SSL_ctrl, (GO_SSL_PTR ctx, int cmd, long larg, void *parg), (ctx, cmd, larg, parg))                                                                                                                                                    \
     DEFINEFUNC_1_1(int, SSL_set1_host, (GO_SSL_PTR s, const char *hostname), (s, hostname))                                                                                                                                                                 \
     DEFINEFUNC(long, SSL_get_verify_result, (const GO_SSL_PTR ssl), (ssl))                                                                                                                                                                                  \

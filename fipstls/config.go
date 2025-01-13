@@ -46,15 +46,6 @@ const (
 	VerifyPostHandshake
 )
 
-// ALPNProto
-type ALPNProto int
-
-const (
-	ALPNProtoH1Only ALPNProto = iota
-	ALPNProtoH2Only
-	ALPNProtoBoth
-)
-
 // X509VerifyFlags represents certificate verification flags.
 type X509VerifyFlags uint32
 
@@ -77,11 +68,20 @@ type Config struct {
 	// LibsslVersion is the libssl version to dynamically load.
 	LibsslVersion string
 
-	// CaFile is the path to a file of CA certificates in PEM format.
+	// CaFile is the path to the CA certificates bundle in PEM format.
 	CaFile string
 
 	// CaPath is the path to a directory containing CA certificates in PEM format.
 	CaPath string
+
+	// CertFile is the path to the client certificate bundle in PEM format.
+	CertFile string
+
+	// KeyFile is the path to the client private key in PEM format.
+	KeyFile string
+
+	// InsecureSkipVerify will skip host verification.
+	InsecureSkipVerify bool
 
 	// MinTLSVersion is the minimum TLS version to accept.
 	MinTLSVersion int64
@@ -104,17 +104,17 @@ type Config struct {
 	// SessionCacheDisabled disables session caching.
 	SessionCacheDisabled bool
 
-	// CompressionDisabled disables session caching.
+	// CompressionDisabled disables compression.
 	CompressionDisabled bool
 
 	// RenegotiationDisabled disables all renegotiation.
 	RenegotiationDisabled bool
 
-	// NextProto is the ALPN protocol to prefer when establishing a connection.
-	NextProto ALPNProto
+	// NextProtos are the ALPN protocol to prefer when establishing a connection.
+	NextProtos []string
 }
 
-// DefaultConfig returns a [Config] with sane default options. The default context is uninitialized.
+// DefaultConfig returns a [Config] with sane default options.
 func NewDefaultConfig() *Config {
 	return &Config{
 		Method:            ClientMethod,
@@ -207,6 +207,13 @@ func WithCompressionDisabled() ConfigOption {
 	}
 }
 
+// WithInsecure skips host verification.
+func WithInsecure() ConfigOption {
+	return func(cfg *Config) {
+		cfg.InsecureSkipVerify = true
+	}
+}
+
 // WithRenegotiationDisabled disables all renegotiation.
 func WithRenegotiationDisabled() ConfigOption {
 	return func(cfg *Config) {
@@ -214,9 +221,17 @@ func WithRenegotiationDisabled() ConfigOption {
 	}
 }
 
-// WithALPNProtocol sets the ALPN protocol to use.
-func WithALPNProtocol(proto ALPNProto) ConfigOption {
+// WithNextProtos sets the ALPN protocols to use.
+func WithNextProtos(protos []string) ConfigOption {
 	return func(cfg *Config) {
-		cfg.NextProto = proto
+		cfg.NextProtos = protos
+	}
+}
+
+// WithClientCertKeyPair sets the client cert and key that may be used by the server to authenticate
+// the client.
+func WithClientCertKeyPair(certFile, keyFile string) ConfigOption {
+	return func(cfg *Config) {
+		cfg.CertFile, cfg.KeyFile = certFile, keyFile
 	}
 }

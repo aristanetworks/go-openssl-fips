@@ -14,6 +14,7 @@ import (
 )
 
 func TestTransportConcurrency(t *testing.T) {
+	initTest(t)
 	defer testutils.LeakCheck(t)
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
@@ -24,12 +25,7 @@ func TestTransportConcurrency(t *testing.T) {
 			opts = append(opts, fipstls.WithConnTracingEnabled())
 		}
 
-		client, err := fipstls.NewClient(
-			fipstls.NewCtx(fipstls.WithCaFile(ts.CaFile)),
-			opts...)
-		if err != nil {
-			t.Fatal(err)
-		}
+		client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, opts...)
 		createRequests(t, ts, client)
 	})
 }

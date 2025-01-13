@@ -4,6 +4,7 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/aristanetworks/go-openssl-fips/fipstls"
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
@@ -26,7 +27,18 @@ func initTest(t *testing.T) {
 	if t != nil {
 		t.Parallel()
 	}
-	if *enableCgoTrace {
-		libssl.SetTraceMode(libssl.TraceEnabled)
+	if err := fipstls.Init(""); err != nil {
+		t.Fatalf("failed to load libssl: %v", err)
 	}
+	if *enableCgoTrace {
+		libssl.EnableDebugLogging()
+	}
+}
+
+func getDialOpts() []fipstls.DialOption {
+	o := []fipstls.DialOption{}
+	if *enableClientTrace {
+		o = append(o, fipstls.WithConnTracingEnabled())
+	}
+	return o
 }

@@ -2,9 +2,9 @@
 
 # This script runs tests for glibc 2.17 forward compatibility.
 # It builds and runs tests in Docker containers with glibc 2.17,
-# 2.31 (with openssl 1.1.1w), and 2.34 (with openssl 3.x).
+# 2.31 (with openssl 1.1.1w), and 2.36 (with openssl 3.x).
 #
-# It also builds and runs tests on alpine with openssl 3.x.
+# It also builds and runs tests on alpine 3.21 with openssl 3.x.
 
 cleanup() {
     echo "Caught cancellation signal. Terminating background processes..."
@@ -15,7 +15,7 @@ cleanup() {
 # Trap SIGINT and SIGTERM signals
 trap cleanup SIGINT SIGTERM
 
-TAG=$(git rev-parse HEAD)
+TAG=$(git rev-parse --short HEAD)
 TS=$(date +%s)
 DOCKERFILE="./scripts/Dockerfile"
 

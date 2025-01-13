@@ -7,17 +7,18 @@ import (
 	"unsafe"
 )
 
-type TraceMode int
+type DebugMode int
 
 const (
-	TraceDisabled TraceMode = iota
-	TraceEnabled
+	DebugDisabled DebugMode = iota
+	DebugEnabled
 )
 
-var traceMode TraceMode
+var debugLogging DebugMode
 
-func SetTraceMode(v TraceMode) {
-	traceMode = v
+// EnableDebugLogging is used for enabling debug logging to stdout in C helper functions.
+func EnableDebugLogging() {
+	debugLogging = DebugEnabled
 }
 
 type SSLMethod struct {
@@ -73,7 +74,7 @@ func NewSSLCtx(tlsMethod *SSLMethod) (*SSLCtx, error) {
 }
 
 func SSLCtxSetH2Proto(sslCtx *SSLCtx) error {
-	if r := C.go_openssl_set_h2_alpn(sslCtx.inner, C.int(int(traceMode))); r != 0 {
+	if r := C.go_openssl_set_h2_alpn(sslCtx.inner, C.int(int(debugLogging))); r != 0 {
 		return NewOpenSSLError("libssl: SSL_CTX_set_alpn_protos: could not set H2 protocol")
 	}
 	return nil
@@ -83,7 +84,7 @@ func SSLStatusALPN(ssl *SSL) string {
 	var proto [256]C.char
 	var length C.int
 
-	ret := C.go_openssl_check_alpn_status(ssl.inner, &proto[0], &length, C.int(int(traceMode)))
+	ret := C.go_openssl_check_alpn_status(ssl.inner, &proto[0], &length, C.int(int(debugLogging)))
 	if ret == 0 {
 		return "no protocol selected"
 	}
@@ -107,25 +108,24 @@ type CtxConfig struct {
 	NextProto  string
 	CaFile     string
 	CaPath     string
+	CertFile   string
+	KeyFile    string
 }
 
 func SSLCtxConfigure(ctx *SSLCtx, config *CtxConfig) error {
 	cNextProto := C.CString(config.NextProto)
 	cCaPath := C.CString(config.CaPath)
 	cCaFile := C.CString(config.CaFile)
+	cCertFile := C.CString(config.CertFile)
+	cKeyFile := C.CString(config.KeyFile)
 	defer C.free(unsafe.Pointer(cNextProto))
 	defer C.free(unsafe.Pointer(cCaPath))
 	defer C.free(unsafe.Pointer(cCaFile))
-	if r := C.go_openssl_ctx_configure(
-		ctx.inner,
-		C.long(config.MinTLS),
-		C.long(config.MaxTLS),
-		C.long(config.Options),
-		C.int(config.VerifyMode),
-		cNextProto,
-		cCaPath,
-		cCaFile,
-		C.int(int(traceMode)),
+	defer C.free(unsafe.Pointer(cCertFile))
+	defer C.free(unsafe.Pointer(cKeyFile))
+	if r := C.go_openssl_ctx_configure(ctx.inner, C.long(config.MinTLS), C.long(config.MaxTLS),
+		C.long(config.Options), C.int(config.VerifyMode), cNextProto, cCaPath, cCaFile, cCertFile,
+		cKeyFile, C.int(int(debugLogging)),
 	); r != 0 {
 		return NewOpenSSLError("libssl: ctx_configure failed")
 	}
@@ -274,7 +274,7 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 	cPort := C.CString(port)
 	defer C.free(unsafe.Pointer(cHost))
 	defer C.free(unsafe.Pointer(cPort))
-	bio := C.go_openssl_create_bio(cHost, cPort, C.int(family), C.int(mode), C.int(int(traceMode)))
+	bio := C.go_openssl_create_bio(cHost, cPort, C.int(family), C.int(mode), C.int(int(debugLogging)))
 	if bio == nil {
 		return nil, -1, NewOpenSSLError("libssl: create_bio")
 	}
@@ -292,7 +292,8 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 func SSLConfigureBIO(ssl *SSL, bio *BIO, hostname string) error {
 	cHost := C.CString(hostname)
 	defer C.free(unsafe.Pointer(cHost))
-	if r := C.go_openssl_ssl_configure_bio(ssl.inner, bio.inner, cHost, C.int(int(traceMode))); r != 0 {
+	if r := C.go_openssl_ssl_configure_bio(ssl.inner, bio.inner, cHost,
+		C.int(int(debugLogging))); r != 0 {
 		return newSSLError("libssl: ssl_configure_bio", SSLGetError(ssl, int(r)))
 	}
 	return nil

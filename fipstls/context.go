@@ -2,6 +2,7 @@ package fipstls
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
@@ -23,8 +24,7 @@ func Init(version string) error {
 	return nil
 }
 
-// Context wraps the C.SSL_CTX and stores [Config] options used to create
-// [Conn] connections.
+// Context is used for configuring and creating SSL [Conn] connections.
 type Context struct {
 	ctx    *libssl.SSLCtx
 	closer Closer
@@ -32,74 +32,41 @@ type Context struct {
 	TLS    *Config
 }
 
-// NewCtx configures the [Context] but will not allocate a C.SSL_CTX object.
-//
-// Calling [Context.New] will create a new [Context] with a C.SSL_CTX allocated
-// using the [Context.TLS] options.
+// NewCtx configures the [Context] and allocates a C.SSL_CTX object.
 //
 // The C.SSL_CTX will be freed on [Conn.Close].
-func NewCtx(opts ...ConfigOption) *Context {
-	return &Context{
-		closer: noopCloser{},
-		TLS:    NewConfig(opts...),
+func NewCtx(tls *Config) (*Context, error) {
+	ctx := &Context{TLS: tls, closer: noopCloser{}}
+	if ctx.TLS == nil {
+		ctx.TLS = NewDefaultConfig()
 	}
-}
-
-// NewUnsafeCtx configures and allocates a C.SSL_CTX object that will be reused
-// in creating [Conn] connections. The caller is responsible for freeing the
-// C memory allocated for C.SSL_CTX with [Context.Close].
-//
-// Calling [Context.New] will create a new [Context] that references the
-// pointer receiver's C.SSL_CTX, but can't free it.
-func NewUnsafeCtx(opts ...ConfigOption) (ctx *Context, err error) {
-	ctx = NewCtx(opts...)
-	ctx.unsafe = true
-	if !ctx.unsafe {
-		return ctx, nil
-	}
-	if err = ctx.addCloser(ctx); err != nil {
+	if err := ctx.new(); err != nil {
 		return nil, err
 	}
 	return ctx, nil
 }
 
-func (c *Context) new() (ctx *libssl.SSLCtx, err error) {
-	if err = Init(c.TLS.LibsslVersion); err != nil {
-		return nil, err
-	}
-	ctx, err = newSslCtx(c.TLS.Method)
+func (c *Context) new() error {
+	method, err := libssl.NewTLSClientMethod()
 	if err != nil {
-		return nil, err
+		return err
+	}
+	ctx, err := libssl.NewSSLCtx(method)
+	if err != nil {
+		libssl.SSLCtxFree(ctx)
+		return err
 	}
 	if err = c.apply(ctx); err != nil {
-		return nil, err
+		libssl.SSLCtxFree(ctx)
+		return err
 	}
-	return ctx, nil
+	c.ctx = ctx
+	c.closer = newOnceCloser(func() error {
+		return libssl.SSLCtxFree(c.ctx)
+	})
+	return nil
 }
 
-// newSslCtx creates a new C.SSL_CTX object from the TLS [Method].
-func newSslCtx(m Method) (*libssl.SSLCtx, error) {
-	var method *libssl.SSLMethod
-	var err error
-	switch m {
-	case ClientMethod:
-		method, err = libssl.NewTLSClientMethod()
-	case ServerMethod:
-		method, err = libssl.NewTLSServerMethod()
-	case DefaultMethod:
-		method, err = libssl.NewTLSMethod()
-	}
-	if err != nil {
-		return nil, err
-	}
-	sslCtx, err := libssl.NewSSLCtx(method)
-	if err != nil {
-		return nil, err
-	}
-	return sslCtx, nil
-}
-
-// apply applies the security options to an SSL context
 func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	var options int64
 
@@ -115,6 +82,9 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	}
 
 	// Set verification mode
+	if c.TLS.InsecureSkipVerify {
+		c.TLS.VerifyMode = VerifyNone
+	}
 	var verifyMode int
 	switch c.TLS.VerifyMode {
 	case VerifyNone:
@@ -131,7 +101,7 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 
 	// Set h2 proto for HTTP/2 clients
 	var proto string
-	if c.TLS.NextProto == ALPNProtoH2Only {
+	if slices.Contains(c.TLS.NextProtos, "h2") {
 		proto = "h2"
 	}
 
@@ -143,6 +113,8 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 		NextProto:  proto,
 		CaFile:     c.TLS.CaFile,
 		CaPath:     c.TLS.CaPath,
+		CertFile:   c.TLS.CertFile,
+		KeyFile:    c.TLS.KeyFile,
 	})
 }
 
@@ -154,29 +126,4 @@ func (c *Context) Ctx() *libssl.SSLCtx {
 // Close frees the C.SSL_CTX C object allocated for [Context].
 func (c *Context) Close() error {
 	return c.closer.Close()
-}
-
-// addCloser will create a new C.SSL_CTX and add a closer to free it.
-func (c *Context) addCloser(cc *Context) (err error) {
-	cc.ctx, err = c.new()
-	if err != nil {
-		return err
-	}
-	cc.closer = newOnceCloser(func() error {
-		return libssl.SSLCtxFree(cc.ctx)
-	})
-	return nil
-}
-
-// New returns a new Context derived from this [Context]. It either references
-// the C.SSL_CTX or creates a new one from the [Config].
-func (c *Context) New() (ctx *Context, err error) {
-	ctx = &Context{ctx: c.ctx, TLS: c.TLS, closer: &noopCloser{}}
-	if !c.unsafe {
-		// [Conn.Close] will free the memory
-		if err = c.addCloser(ctx); err != nil {
-			return ctx, err
-		}
-	}
-	return ctx, nil
 }

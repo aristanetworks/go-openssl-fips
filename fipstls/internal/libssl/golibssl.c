@@ -211,8 +211,9 @@ int go_openssl_version_patch(void *handle)
 }
 
 int go_openssl_ctx_configure(GO_SSL_CTX_PTR ctx, long minTLS, long maxTLS, long options,
-                             int verifyMode, const char *nextProto, const char *caPath,
-                             const char *caFile, int trace)
+                             int verifyMode, const char *nextProto,
+                             const char *caPath, const char *caFile,
+                             const char *certFile, const char *keyFile, int trace)
 {
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] go_openssl_ctx_configure...\n");
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_set_options...\n");
@@ -229,6 +230,33 @@ int go_openssl_ctx_configure(GO_SSL_CTX_PTR ctx, long minTLS, long maxTLS, long 
         GO_OPENSSL_DEBUGLOG(trace, "[ERROR] SSL_CTX_set_alpn_protos failed!\n");
         return 1;
     }
+
+    // Configure certificate if provided
+    if (certFile != NULL && strlen(certFile) > 0)
+    {
+        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_use_certificate_chain with 'certFile=%s'...\n",
+                            certFile);
+        if (go_openssl_SSL_CTX_use_certificate_chain_file(ctx, certFile) != 1)
+        {
+            GO_OPENSSL_DEBUGLOG(trace, "[ERROR] SSL_CTX_use_certificate_chain failed!\n");
+            return 1;
+        }
+        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_use_certificate_chain succeeded!\n");
+    }
+
+    // Configure private key if provided
+    if (keyFile != NULL && strlen(keyFile) > 0)
+    {
+        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_use_PrivateKey_file with 'keyFile=%s'...\n",
+                            keyFile);
+        if (go_openssl_SSL_CTX_use_PrivateKey_file(ctx, keyFile, GO_X509_FILETYPE_PEM) != 1)
+        {
+            GO_OPENSSL_DEBUGLOG(trace, "[ERROR] SSL_CTX_use_PrivateKey_file failed!\n");
+            return 1;
+        }
+        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_use_PrivateKey_file succeeded!\n");
+    }
+
     // no callback
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_set_verify with 'verifyMode=%d'...\n",
                         verifyMode);
@@ -254,31 +282,30 @@ int go_openssl_ctx_configure(GO_SSL_CTX_PTR ctx, long minTLS, long maxTLS, long 
         }
     }
     // if either of these are empty, use default verify paths
-    if (strlen(caPath) == 0 || strlen(caFile) == 0)
+    if (caPath != NULL && caFile != NULL && strlen(caPath) > 0 && strlen(caFile) > 0)
     {
-        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_set_default_verify_paths...\n");
-        if (go_openssl_SSL_CTX_set_default_verify_paths(ctx) != 1)
+        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_load_verify_locations with 'caPath=%s' and 'caFile=%s'...\n", caPath, caFile);
+        if (go_openssl_SSL_CTX_load_verify_locations(ctx, caFile, caPath) != 1)
         {
-            GO_OPENSSL_DEBUGLOG(trace, "[ERROR] SSL_CTX_set_default_verify_paths failed!\n");
+            GO_OPENSSL_DEBUGLOG(trace, "[ERROR] SSL_CTX_load_verify_locations failed!\n");
             return 1;
         }
-        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_set_default_verify_paths succeeded!\n");
+        GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_load_verify_locations succeeded!\n");
+        GO_OPENSSL_DEBUGLOG(trace, "[INFO] go_openssl_ctx_configure succeeded!\n");
         return 0;
     }
-    GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_load_verify_locations with 'caPath=%s' and 'caFile=%s'...\n", caPath, caFile);
-    if (go_openssl_SSL_CTX_load_verify_locations(ctx, caFile, caPath) != 1)
+    GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_set_default_verify_paths...\n");
+    if (go_openssl_SSL_CTX_set_default_verify_paths(ctx) != 1)
     {
-        GO_OPENSSL_DEBUGLOG(trace, "[ERROR] SSL_CTX_load_verify_locations failed!\n");
+        GO_OPENSSL_DEBUGLOG(trace, "[ERROR] SSL_CTX_set_default_verify_paths failed!\n");
         return 1;
     }
-    GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_load_verify_locations succeeded!\n");
-    GO_OPENSSL_DEBUGLOG(trace, "[INFO] go_openssl_ctx_configure succeeded!\n");
+    GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_CTX_set_default_verify_paths succeeded!\n");
     return 0;
 }
 
 // go_openssl_ssl_configure_bio configures the ssl connection with BIO.
-int go_openssl_ssl_configure_bio(GO_SSL_PTR ssl, GO_BIO_PTR bio,
-                                 const char *hostname, int trace)
+int go_openssl_ssl_configure_bio(GO_SSL_PTR ssl, GO_BIO_PTR bio, const char *hostname, int trace)
 {
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] go_openssl_ssl_configure_bio...\n");
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_set_bio with 'host=%s'...\n", hostname);
@@ -287,8 +314,7 @@ int go_openssl_ssl_configure_bio(GO_SSL_PTR ssl, GO_BIO_PTR bio,
     return go_openssl_ssl_configure(ssl, hostname, trace);
 }
 
-int go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname,
-                             int trace)
+int go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, int trace)
 {
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] go_openssl_ssl_configure...\n");
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] SSL_set_connect_state with 'host=%s'...\n", hostname);
@@ -417,7 +443,7 @@ go_openssl_create_bio(const char *hostname, const char *port, int family, int mo
     return bio;
 }
 
-static const unsigned char h2_proto[] = {2, 'h', '2'};
+static const unsigned char h2_proto[] = {2, 'h', '2', '\0'};
 
 int go_openssl_set_h2_alpn(GO_SSL_CTX_PTR ctx, int trace)
 {

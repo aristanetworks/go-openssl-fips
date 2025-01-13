@@ -5,16 +5,11 @@ import (
 )
 
 // NewClient returns an [http.Client] with [Transport] that uses [Dialer] to
-// create [Conn] connections configured by [Context]. The [Context] should
-// not be nil.
-func NewClient(c *Context, opts ...DialOption) (*http.Client, error) {
-	d, err := NewDialer(c, opts...)
-	if err != nil {
-		return nil, err
-	}
+// create [Conn] connections configured by [Config].
+func NewClient(tls *Config, opts ...DialOption) *http.Client {
 	return &http.Client{
 		Transport: &Transport{
-			Dialer: d,
+			Dialer: NewDialer(tls, opts...),
 		},
-	}, nil
+	}
 }

@@ -58,7 +58,7 @@ openssl version
 ldd --version
 ldd ssl-client-glibc-2.17
 go test -tags netgo -c -o ssl-client-glibc-2.17 fipstls_test.go client_test.go
-# ./ssl-client-glibc-2.17
+./ssl-client-glibc-2.17
 EOF
 
 # test 2.17 binary on glibc 2.36
@@ -76,7 +76,7 @@ ldd ssl-client-glibc-2.17
 EOF
 
 WORKDIR /go/src/fipstls
-RUN ./scripts/test.sh -main && ./scripts/test.sh -fallback
+RUN ./scripts/test.sh -main && ./scripts/test.sh -asan && ./scripts/test.sh -fallback
 
 # build & test on alpine
 FROM golang:1.23.2-alpine AS test-ossl3-alpine

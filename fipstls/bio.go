@@ -47,6 +47,9 @@ func NewBIO(addr, network string, mode int) (b *BIO, err error) {
 		return b, err
 	}
 	b.closer = newOnceCloser(func() error {
+		if b.bio == nil {
+			return nil
+		}
 		return libssl.BIOFree(b.bio)
 	})
 	return b, nil
