@@ -19,13 +19,13 @@ case "$1" in
 -a | -asan)
     if [ ! -f "/etc/alpine-release" ]; then
         echo "Running tests with address sanitizer..."
-        go test $TEST_FLAGS -stresstest -tags=asan -asan ./...
+        go test $TEST_FLAGS -noparallel -stresstest -tags=asan -asan ./...
     fi
     break
     ;;
 -r | -race)
     echo "Running tests with race detector..."
-    go test $TEST_FLAGS -stresstest -race ./...
+    go test $TEST_FLAGS -noparallel -stresstest -race ./...
     break
     ;;
 -c | -cover)
@@ -37,6 +37,11 @@ case "$1" in
 -b | -bench)
     echo "Running BenchmarkGrpcBidiStream..."
     go test -v -run=^$ -bench=BenchmarkGrpcBidiStream -benchmem -count=1 .
+    break
+    ;;
+-v | -vet)
+    echo "Running go vet..."
+    go vet ./...
     break
     ;;
 esac
