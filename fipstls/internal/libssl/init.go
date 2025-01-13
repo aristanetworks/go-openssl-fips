@@ -34,7 +34,7 @@ func opensslInit(file string) (major, minor, patch uint, err error) {
 	var supported bool
 	switch major {
 	case 1:
-		supported = minor == 0 || minor == 1
+		supported = minor == 1
 	case 3:
 		// OpenSSL guarantees API and ABI compatibility within the same major version since OpenSSL 3.
 		supported = true
@@ -48,17 +48,9 @@ func opensslInit(file string) (major, minor, patch uint, err error) {
 	C.go_openssl_load_functions(handle, C.uint(major), C.uint(minor), C.uint(patch))
 
 	// Initialize OpenSSL.
-	if major == 1 && minor == 0 {
-		C.go_openssl_SSL_library_init()
-		if C.go_openssl_thread_setup() != 1 {
-			return 0, 0, 0, fail("openssl: thread setup")
-		}
-		C.go_openssl_ERR_load_crypto_strings()
-	} else {
-		flags := C.uint64_t(C.GO_OPENSSL_INIT_ADD_ALL_CIPHERS | C.GO_OPENSSL_INIT_ADD_ALL_DIGESTS | C.GO_OPENSSL_INIT_LOAD_CONFIG | C.GO_OPENSSL_INIT_LOAD_CRYPTO_STRINGS)
-		if C.go_openssl_OPENSSL_init_ssl(flags, nil) != 1 {
-			return 0, 0, 0, fail("openssl: init ssl")
-		}
+	flags := C.uint64_t(C.GO_OPENSSL_INIT_ADD_ALL_CIPHERS | C.GO_OPENSSL_INIT_ADD_ALL_DIGESTS | C.GO_OPENSSL_INIT_LOAD_CONFIG | C.GO_OPENSSL_INIT_LOAD_CRYPTO_STRINGS)
+	if C.go_openssl_OPENSSL_init_ssl(flags, nil) != 1 {
+		return 0, 0, 0, fail("openssl: init ssl")
 	}
 	return major, minor, patch, nil
 }
