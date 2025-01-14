@@ -2,6 +2,7 @@ package fipstls
 
 import (
 	"errors"
+	"path/filepath"
 	"slices"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
@@ -36,6 +37,9 @@ type Context struct {
 //
 // The C.SSL_CTX will be freed on [Conn.Close].
 func NewCtx(tls *Config) (*Context, error) {
+	if !libsslInit {
+		return nil, ErrNoLibSslInit
+	}
 	ctx := &Context{TLS: tls, closer: noopCloser{}}
 	if ctx.TLS == nil {
 		ctx.TLS = NewDefaultConfig()
@@ -103,6 +107,10 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 	var proto string
 	if slices.Contains(c.TLS.NextProtos, "h2") {
 		proto = "h2"
+	}
+
+	if c.TLS.CaFile != "" && c.TLS.CaPath == "" {
+		c.TLS.CaPath = filepath.Dir(c.TLS.CaFile)
 	}
 
 	return libssl.SSLCtxConfigure(ctx, &libssl.CtxConfig{

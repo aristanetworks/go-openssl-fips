@@ -1,8 +1,6 @@
 package fipstls
 
 import (
-	"path/filepath"
-
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
 )
 
@@ -121,117 +119,5 @@ func NewDefaultConfig() *Config {
 		MinTLSVersion:     Version12,
 		VerifyMode:        VerifyPeer,
 		CertificateChecks: X509CheckTimeValidity,
-	}
-}
-
-// ConfigOption is a functional option for configuring [Config].
-type ConfigOption func(*Config)
-
-// NewConfig creates a new [Config] with the given options.
-func NewConfig(opts ...ConfigOption) *Config {
-	cfg := NewDefaultConfig()
-	for _, opt := range opts {
-		opt(cfg)
-	}
-	return cfg
-}
-
-// WithLibsslVersion sets the libssl version to dynamically load.
-func WithLibsslVersion(version string) ConfigOption {
-	return func(cfg *Config) {
-		cfg.LibsslVersion = version
-	}
-}
-
-// WithCaFile sets the path to a file of CA certificates in PEM format.
-func WithCaFile(path string) ConfigOption {
-	return func(cfg *Config) {
-		cfg.CaPath = filepath.Dir(path)
-		cfg.CaFile = path
-	}
-}
-
-// WithMinTLSVersion sets the minimum TLS version to accept.
-func WithMinTLSVersion(version int64) ConfigOption {
-	return func(cfg *Config) {
-		cfg.MinTLSVersion = version
-	}
-}
-
-// WithMaxTLSVersion sets the maximum TLS version to use.
-func WithMaxTLSVersion(version int64) ConfigOption {
-	return func(cfg *Config) {
-		cfg.MaxTLSVersion = version
-	}
-}
-
-// WithMethod sets the TLS method to use.
-func WithMethod(method Method) ConfigOption {
-	return func(cfg *Config) {
-		cfg.Method = method
-	}
-}
-
-// WithVerifyMode sets the certificate verification mode.
-func WithVerifyMode(mode VerifyMode) ConfigOption {
-	return func(cfg *Config) {
-		cfg.VerifyMode = mode
-	}
-}
-
-// WithCertificateChecks sets the certificate verification flags.
-func WithCertificateChecks(flags X509VerifyFlags) ConfigOption {
-	return func(cfg *Config) {
-		cfg.CertificateChecks = flags
-	}
-}
-
-// WithSessionTicketsDisabled disables session ticket support.
-func WithSessionTicketsDisabled() ConfigOption {
-	return func(cfg *Config) {
-		cfg.SessionTicketsDisabled = true
-	}
-}
-
-// WithSessionCacheDisabled disables session caching.
-func WithSessionCacheDisabled() ConfigOption {
-	return func(cfg *Config) {
-		cfg.SessionCacheDisabled = true
-	}
-}
-
-// WithCompressionDisabled disables compression.
-func WithCompressionDisabled() ConfigOption {
-	return func(cfg *Config) {
-		cfg.CompressionDisabled = true
-	}
-}
-
-// WithInsecure skips host verification.
-func WithInsecure() ConfigOption {
-	return func(cfg *Config) {
-		cfg.InsecureSkipVerify = true
-	}
-}
-
-// WithRenegotiationDisabled disables all renegotiation.
-func WithRenegotiationDisabled() ConfigOption {
-	return func(cfg *Config) {
-		cfg.RenegotiationDisabled = true
-	}
-}
-
-// WithNextProtos sets the ALPN protocols to use.
-func WithNextProtos(protos []string) ConfigOption {
-	return func(cfg *Config) {
-		cfg.NextProtos = protos
-	}
-}
-
-// WithClientCertKeyPair sets the client cert and key that may be used by the server to authenticate
-// the client.
-func WithClientCertKeyPair(certFile, keyFile string) ConfigOption {
-	return func(cfg *Config) {
-		cfg.CertFile, cfg.KeyFile = certFile, keyFile
 	}
 }
