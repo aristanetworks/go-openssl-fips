@@ -44,15 +44,15 @@ type Dialer struct {
 // DialOption is used for configuring the [Dialer].
 type DialOption func(*Dialer)
 
-// WithDialTimeout sets the timeout for the dialer.
-func WithDialTimeout(timeout time.Duration) DialOption {
+// WithTimeout sets the timeout for the dialer.
+func WithTimeout(timeout time.Duration) DialOption {
 	return func(d *Dialer) {
 		d.Timeout = timeout
 	}
 }
 
-// WithDialDeadline sets the deadline for the dialer.
-func WithDialDeadline(deadline time.Time) DialOption {
+// WithDeadline sets the deadline for the dialer.
+func WithDeadline(deadline time.Time) DialOption {
 	return func(d *Dialer) {
 		d.Deadline = deadline
 	}
@@ -99,7 +99,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 	return d.newConn(bio)
 }
 
-// NewGrpcDialFn returns a dialer function for grpc to create [Conn] connections.
+// NewGrpcDialFn returns a dial function for grpc to create [Conn] connections.
 // The [Context] should not be nil.
 func NewGrpcDialFn(tls *Config, opts ...DialOption) (func(context.Context,
 	string) (net.Conn, error), error) {
@@ -151,6 +151,9 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 }
 
 func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
+	if d.TLS == nil {
+		d.TLS = NewDefaultConfig()
+	}
 	ctx, err := NewCtx(d.TLS)
 	if err != nil {
 		ctx.Close()
