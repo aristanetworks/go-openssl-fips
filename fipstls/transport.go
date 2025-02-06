@@ -15,8 +15,8 @@ type Transport struct {
 	// Dialer is used for creating TLS connections.
 	Dialer *Dialer
 
-	// ModifyHeader is called in RoundTrip to modify the request headers before making the request.
-	ModifyHeader func(*http.Header)
+	// SetHeader is called in RoundTrip to modify the request headers before making the request.
+	SetHeader func(*http.Header)
 
 	// DisableCompression, if true, prevents the Transport from
 	// requesting compression with an "Accept-Encoding: gzip"
@@ -31,8 +31,8 @@ type Transport struct {
 
 // RoundTrip does a single HTTP transaction. It dials a new [Conn] connection every roundtrip.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.ModifyHeader != nil {
-		t.ModifyHeader(&req.Header)
+	if t.SetHeader != nil {
+		t.SetHeader(&req.Header)
 	}
 
 	// Ask for a compressed version if the caller didn't set their

@@ -94,7 +94,7 @@ func main() {
 	client = &http.Client{
 		Transport: &fipstls.Transport{
 			Dialer: fipstls.NewDialer(&fipstls.Config{CaFile: "/path/to/cert.pem"}),
-			ModifyHeader: func(h *http.Header) {
+			SetHeader: func(h *http.Header) {
 				h.Add("User-Agent", "foo")
 			},
 		}
