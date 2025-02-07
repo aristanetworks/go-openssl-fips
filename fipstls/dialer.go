@@ -88,40 +88,37 @@ func NewDialer(tls *Config, opts ...DialOption) *Dialer {
 // The network must be one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or
 // "unix".
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	if network == "" {
-		network = d.Network
+	d.Network = network
+	if d.Network == "" {
+		d.Network = DefaultNetwork
 	}
-	bio, err := d.dialBIO(ctx, network, addr)
-	if err != nil {
-		bio.Close()
-		return nil, err
-	}
-	return d.newConn(bio)
+	return d.dial(ctx, addr)
 }
 
-// NewGrpcDialFn returns a dial function for grpc to create [Conn] connections.
-// The [Context] should not be nil.
-func NewGrpcDialFn(tls *Config, opts ...DialOption) (func(context.Context,
-	string) (net.Conn, error), error) {
+// NewDialContext returns a dial function for grpc to create [Conn] connections.
+func NewDialContext(tls *Config, opts ...DialOption) func(context.Context,
+	string) (net.Conn, error) {
 	if tls == nil {
 		tls = NewDefaultConfig()
 	}
 	d := NewDialer(tls, opts...)
 	// Set H2 as the protocol
 	d.TLS.NextProtos = []string{"h2"}
-	return func(ctx context.Context, addr string) (net.Conn, error) {
-		bio, err := d.dialBIO(ctx, d.Network, addr)
-		if err != nil {
-			bio.Close()
-			return nil, err
-		}
-		return d.newConn(bio)
-	}, nil
+	return d.dial
 }
 
 type dialResult struct {
 	bio *BIO
 	err error
+}
+
+func (d *Dialer) dial(ctx context.Context, addr string) (net.Conn, error) {
+	bio, err := d.dialBIO(ctx, d.Network, addr)
+	if err != nil {
+		bio.Close()
+		return nil, err
+	}
+	return d.newConn(bio)
 }
 
 func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error) {
@@ -151,9 +148,6 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 }
 
 func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
-	if d.TLS == nil {
-		d.TLS = NewDefaultConfig()
-	}
 	ctx, err := NewCtx(d.TLS)
 	if err != nil {
 		ctx.Close()

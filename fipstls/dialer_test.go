@@ -260,12 +260,8 @@ func TestGrpcDial(t *testing.T) {
 	if *enableClientTrace {
 		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
 	}
-	dialFn, err := fipstls.NewGrpcDialFn(
-		&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
+	dialFn := fipstls.NewDialContext(&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
 		fipsOpts...)
-	if err != nil {
-		t.Fatalf("Failed to create grpc dialer: %v", err)
-	}
 
 	t.Log("Attempting raw connection...")
 	rawConn, err := dialFn(context.Background(), addr)
@@ -745,12 +741,9 @@ func newClientOpts(b testing.TB) []grpc.DialOption {
 		clientOpts = []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 	} else {
 		b.Log("Running tests with fipstls.Dialer")
-		dialFn, err := fipstls.NewGrpcDialFn(
+		dialFn := fipstls.NewDialContext(
 			&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
 			getDialOpts()...)
-		if err != nil {
-			b.Fatalf("Failed to create grpc dialer: %v", err)
-		}
 		clientOpts = []grpc.DialOption{
 			grpc.WithContextDialer(dialFn),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),

@@ -140,7 +140,7 @@ func main() {
 	}
 
 	// Create an fipstls.Dialer with the configured context
-	dialFn, err := fipstls.NewGrpcDialFn(&fipstls.Config{"/path/to/cert.pem"})
+	dialFn, err := fipstls.NewDialContext(&fipstls.Config{"/path/to/cert.pem"})
 	if err != nil {
 		log.Fatalf("Failed to create grpc dialer: %v", err)
 	}
