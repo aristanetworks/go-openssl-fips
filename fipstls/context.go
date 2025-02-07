@@ -85,13 +85,17 @@ func (c *Context) apply(ctx *libssl.SSLCtx) error {
 		options |= libssl.SSL_OP_NO_COMPRESSION
 	}
 
-	// Set verification mode
+	// Set verification mode to peer as default, using VerifyNone as the zero-value
+	if c.TLS.VerifyMode == verifyNone {
+		c.TLS.VerifyMode = VerifyPeer
+	}
+	// Only set VerifyNone if insecure is set
 	if c.TLS.InsecureSkipVerify {
-		c.TLS.VerifyMode = VerifyNone
+		c.TLS.VerifyMode = verifyNone
 	}
 	var verifyMode int
 	switch c.TLS.VerifyMode {
-	case VerifyNone:
+	case verifyNone:
 		verifyMode = libssl.SSL_VERIFY_NONE
 	case VerifyPeer:
 		verifyMode = libssl.SSL_VERIFY_PEER

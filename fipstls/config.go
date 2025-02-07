@@ -32,8 +32,8 @@ const (
 type VerifyMode int
 
 const (
-	// VerifyNone will skip certificate verification (insecure)
-	VerifyNone VerifyMode = iota
+	// verifyNone will skip certificate verification (insecure)
+	verifyNone VerifyMode = iota
 	// VerifyPeer will verify peer certificate
 	VerifyPeer
 	// VerifyFailIfNoPeerCert will fail if peer doesn't present a certificate
@@ -42,24 +42,6 @@ const (
 	VerifyClientOnce
 	// VerifyPostHandshake will do post-handshake verification
 	VerifyPostHandshake
-)
-
-// X509VerifyFlags represents certificate verification flags.
-type X509VerifyFlags uint32
-
-const (
-	// X509CheckTimeValidity checks certificate time validity
-	X509CheckTimeValidity X509VerifyFlags = 1 << iota
-	// X509CheckCRL checks certificate revocation
-	X509CheckCRL
-	// X509CheckCRLAll checks entire certificate chain for revocation
-	X509CheckCRLAll
-	// X509StrictMode enables strict certificate checking
-	X509StrictMode
-	// X509AllowPartialChains allows partial certificate chains
-	X509AllowPartialChains
-	// X509TrustedFirst prefers trusted certificates when building chain
-	X509TrustedFirst
 )
 
 type Config struct {
@@ -78,7 +60,7 @@ type Config struct {
 	// KeyFile is the path to the client private key in PEM format.
 	KeyFile string
 
-	// InsecureSkipVerify will skip host verification.
+	// InsecureSkipVerify will skip verifying the peer's certificate chain. VerifyMode is ignored.
 	InsecureSkipVerify bool
 
 	// MinTLSVersion is the minimum TLS version to accept.
@@ -90,11 +72,8 @@ type Config struct {
 	// TLSMethod is the TLS method to use.
 	Method Method
 
-	// VerifyMode controls how peer certificates are verified.
+	// VerifyMode controls how peer certificates are verified. Defaults to VerifyPeer.
 	VerifyMode VerifyMode
-
-	// CertificateChecks controls X.509 certificate verification.
-	CertificateChecks X509VerifyFlags
 
 	// SessionTicketsDisabled disables session ticket support.
 	SessionTicketsDisabled bool
@@ -115,9 +94,8 @@ type Config struct {
 // DefaultConfig returns a [Config] with sane default options.
 func NewDefaultConfig() *Config {
 	return &Config{
-		Method:            ClientMethod,
-		MinTLSVersion:     Version12,
-		VerifyMode:        VerifyPeer,
-		CertificateChecks: X509CheckTimeValidity,
+		Method:        ClientMethod,
+		MinTLSVersion: Version12,
+		VerifyMode:    VerifyPeer,
 	}
 }
