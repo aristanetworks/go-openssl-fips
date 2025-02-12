@@ -101,9 +101,9 @@ func NewDialContext(tls *Config, opts ...DialOption) func(context.Context,
 	if tls == nil {
 		tls = NewDefaultConfig()
 	}
-	d := NewDialer(tls, opts...)
 	// Set H2 as the protocol
-	d.TLS.NextProtos = []string{"h2"}
+	tls.NextProtos = []string{"h2"}
+	d := NewDialer(tls, opts...)
 	return d.dial
 }
 

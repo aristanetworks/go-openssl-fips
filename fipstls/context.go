@@ -30,7 +30,6 @@ type Context struct {
 	ctx    *libssl.SSLCtx
 	closer Closer
 	unsafe bool
-	TLS    *Config
 }
 
 // NewCtx configures the [Context] and allocates a C.SSL_CTX object.
@@ -40,17 +39,17 @@ func NewCtx(tls *Config) (*Context, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
-	ctx := &Context{TLS: tls, closer: noopCloser{}}
-	if ctx.TLS == nil {
-		ctx.TLS = NewDefaultConfig()
+	if tls == nil {
+		tls = NewDefaultConfig()
 	}
-	if err := ctx.new(); err != nil {
+	ctx := &Context{closer: noopCloser{}}
+	if err := ctx.new(tls); err != nil {
 		return nil, err
 	}
 	return ctx, nil
 }
 
-func (c *Context) new() error {
+func (c *Context) new(tls *Config) error {
 	method, err := libssl.NewTLSClientMethod()
 	if err != nil {
 		return err
@@ -60,7 +59,7 @@ func (c *Context) new() error {
 		libssl.SSLCtxFree(ctx)
 		return err
 	}
-	if err = c.apply(ctx); err != nil {
+	if err := libssl.SSLCtxConfigure(ctx, newCtxConfig(tls)); err != nil {
 		libssl.SSLCtxFree(ctx)
 		return err
 	}
@@ -71,63 +70,57 @@ func (c *Context) new() error {
 	return nil
 }
 
-func (c *Context) apply(ctx *libssl.SSLCtx) error {
-	var options int64
-
+// newCtxConfig creates the configuration that will be understood by the libssl SSLCtx APIs.
+func newCtxConfig(tls *Config) *libssl.CtxConfig {
+	// Copy common configuration options
+	ctxConfig := &libssl.CtxConfig{
+		MinTLS:   tls.MinTLSVersion,
+		MaxTLS:   tls.MaxTLSVersion,
+		CaFile:   tls.CaFile,
+		CaPath:   tls.CaPath,
+		CertFile: tls.CertFile,
+		KeyFile:  tls.KeyFile,
+	}
+	// Set path to CaFile if present
+	if tls.CaFile != "" && tls.CaPath == "" {
+		ctxConfig.CaPath = filepath.Dir(tls.CaFile)
+	}
+	// Set h2 proto for HTTP/2 clients
+	if slices.Contains(tls.NextProtos, "h2") {
+		ctxConfig.NextProto = "h2"
+	}
 	// Apply feature-specific options
-	if c.TLS.SessionTicketsDisabled {
-		options |= libssl.SSL_OP_NO_TICKET
+	if tls.SessionTicketsDisabled {
+		ctxConfig.Options |= libssl.SSL_OP_NO_TICKET
 	}
-	if c.TLS.RenegotiationDisabled {
-		options |= libssl.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION
+	if tls.RenegotiationDisabled {
+		ctxConfig.Options |= libssl.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION
 	}
-	if c.TLS.CompressionDisabled {
-		options |= libssl.SSL_OP_NO_COMPRESSION
+	if tls.CompressionDisabled {
+		ctxConfig.Options |= libssl.SSL_OP_NO_COMPRESSION
 	}
-
 	// Set verification mode to peer as default, using VerifyNone as the zero-value
-	if c.TLS.VerifyMode == verifyNone {
-		c.TLS.VerifyMode = VerifyPeer
+	verifyMode := tls.VerifyMode
+	if verifyMode == verifyNone {
+		verifyMode = VerifyPeer
 	}
 	// Only set VerifyNone if insecure is set
-	if c.TLS.InsecureSkipVerify {
-		c.TLS.VerifyMode = verifyNone
+	if tls.InsecureSkipVerify {
+		verifyMode = verifyNone
 	}
-	var verifyMode int
-	switch c.TLS.VerifyMode {
+	switch verifyMode {
 	case verifyNone:
-		verifyMode = libssl.SSL_VERIFY_NONE
+		ctxConfig.VerifyMode = libssl.SSL_VERIFY_NONE
 	case VerifyPeer:
-		verifyMode = libssl.SSL_VERIFY_PEER
+		ctxConfig.VerifyMode = libssl.SSL_VERIFY_PEER
 	case VerifyFailIfNoPeerCert:
-		verifyMode = libssl.SSL_VERIFY_PEER | libssl.SSL_VERIFY_FAIL_IF_NO_PEER_CERT
+		ctxConfig.VerifyMode = libssl.SSL_VERIFY_PEER | libssl.SSL_VERIFY_FAIL_IF_NO_PEER_CERT
 	case VerifyClientOnce:
-		verifyMode = libssl.SSL_VERIFY_PEER | libssl.SSL_VERIFY_CLIENT_ONCE
+		ctxConfig.VerifyMode = libssl.SSL_VERIFY_PEER | libssl.SSL_VERIFY_CLIENT_ONCE
 	case VerifyPostHandshake:
-		verifyMode = libssl.SSL_VERIFY_PEER | libssl.SSL_VERIFY_POST_HANDSHAKE
+		ctxConfig.VerifyMode = libssl.SSL_VERIFY_PEER | libssl.SSL_VERIFY_POST_HANDSHAKE
 	}
-
-	// Set h2 proto for HTTP/2 clients
-	var proto string
-	if slices.Contains(c.TLS.NextProtos, "h2") {
-		proto = "h2"
-	}
-
-	if c.TLS.CaFile != "" && c.TLS.CaPath == "" {
-		c.TLS.CaPath = filepath.Dir(c.TLS.CaFile)
-	}
-
-	return libssl.SSLCtxConfigure(ctx, &libssl.CtxConfig{
-		MinTLS:     c.TLS.MinTLSVersion,
-		MaxTLS:     c.TLS.MaxTLSVersion,
-		Options:    options,
-		VerifyMode: verifyMode,
-		NextProto:  proto,
-		CaFile:     c.TLS.CaFile,
-		CaPath:     c.TLS.CaPath,
-		CertFile:   c.TLS.CertFile,
-		KeyFile:    c.TLS.KeyFile,
-	})
+	return ctxConfig
 }
 
 // Ctx returns a pointer to the underlying C.SSL_CTX C object.
