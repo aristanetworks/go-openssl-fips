@@ -139,17 +139,11 @@ func main() {
 		log.Fatalf("Failed to initialize fipstls: %v", err)
 	}
 
-	// Create an fipstls.Dialer with the configured context
-	dialFn, err := fipstls.NewDialContext(&fipstls.Config{"/path/to/cert.pem"})
-	if err != nil {
-		log.Fatalf("Failed to create grpc dialer: %v", err)
-	}
-
 	// Use grpc.WithContextDialer to create a gRPC connection that will create
 	// a new Context every dial
 	conn, err := grpc.NewClient(
 		"your-grpc-server-address:port",
-		grpc.WithContextDialer(dialFn),
+		grpc.WithContextDialer(fipstls.NewDialContext(&fipstls.Config{CaFile: "/path/to/cert.pem"})),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
