@@ -63,6 +63,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.Header.Set("Accept-Encoding", "gzip")
 	}
 
+	// The remote endpoint's name may be overridden by Dialer.TLS.ServerName
 	port := req.URL.Port()
 	if port == "" {
 		port = "443"

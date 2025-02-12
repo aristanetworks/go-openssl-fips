@@ -20,6 +20,10 @@ import (
 type Conn struct {
 	ssl *libssl.SSL
 	bio *BIO
+
+	// config is the [Config] passed to the constructor
+	config *Config
+
 	// closed tracks conn closure state
 	closer Closer
 	closed atomic.Bool
@@ -82,7 +86,7 @@ func (c *connLogger) trace(format string, v ...any) {
 }
 
 // NewConn creates a TLS [Conn] from a [Context] and [BIO].
-func NewConn(ctx *Context, bio *BIO, deadline time.Time, trace bool) (*Conn, error) {
+func NewConn(ctx *Context, bio *BIO, tls *Config, trace bool) (*Conn, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
@@ -94,11 +98,11 @@ func NewConn(ctx *Context, bio *BIO, deadline time.Time, trace bool) (*Conn, err
 	c := &Conn{
 		ssl:    ssl,
 		bio:    bio,
+		config: tls,
 		closer: noopCloser{},
 		l:      noopLogger{},
 	}
-	c.handshakeDeadline.Store(deadline)
-	if err := c.configureBIO(c.bio); err != nil {
+	if err := c.configureBIO(); err != nil {
 		libssl.SSLFree(c.ssl)
 		return nil, err
 	}
@@ -118,9 +122,14 @@ func NewConn(ctx *Context, bio *BIO, deadline time.Time, trace bool) (*Conn, err
 	return c, nil
 }
 
-func (c *Conn) configureBIO(b *BIO) error {
-	c.bio = b
-	if err := libssl.SSLConfigureBIO(c.ssl, b.BIO(), b.Hostname()); err != nil {
+func (c *Conn) configureBIO() error {
+	// If no ServerName is set, infer the ServerName
+	// from the hostname we're connecting to.
+	hostname := c.config.ServerName
+	if hostname == "" {
+		hostname = c.bio.Hostname()
+	}
+	if err := libssl.SSLConfigureBIO(c.ssl, c.bio.BIO(), hostname); err != nil {
 		return err
 	}
 	return nil
@@ -132,9 +141,10 @@ func (c *Conn) connect() error {
 }
 
 // Handshake initiates a TLS handshake with the peer.
-func (c *Conn) Handshake() error {
+func (c *Conn) Handshake(deadline time.Time) error {
 	c.l.trace("Handshake begin")
 	defer c.l.trace("Handshake end")
+	c.handshakeDeadline.Store(deadline)
 	_, err := c.doIO(nil, func(b []byte) (int, error) { return 0, c.connect() }, opHandshake)
 	if err != nil {
 		c.l.trace("Post-Handshake negotiated protocols: %v", libssl.SSLStatusALPN(c.ssl))

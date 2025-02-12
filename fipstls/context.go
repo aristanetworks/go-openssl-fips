@@ -40,7 +40,7 @@ func NewCtx(tls *Config) (*Context, error) {
 		return nil, ErrNoLibSslInit
 	}
 	if tls == nil {
-		tls = NewDefaultConfig()
+		tls = newDefaultConfig()
 	}
 	ctx := &Context{closer: noopCloser{}}
 	if err := ctx.new(tls); err != nil {

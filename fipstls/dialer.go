@@ -75,7 +75,7 @@ func WithNetwork(network string) DialOption {
 // NewDialer is returns a [Dialer] configured with [DialOption].
 func NewDialer(tls *Config, opts ...DialOption) *Dialer {
 	if tls == nil {
-		tls = NewDefaultConfig()
+		tls = newDefaultConfig()
 	}
 	d := &Dialer{TLS: tls, Network: DefaultNetwork}
 	for _, o := range opts {
@@ -99,7 +99,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 func NewDialContext(tls *Config, opts ...DialOption) func(context.Context,
 	string) (net.Conn, error) {
 	if tls == nil {
-		tls = NewDefaultConfig()
+		tls = newDefaultConfig()
 	}
 	// Set H2 as the protocol
 	tls.NextProtos = []string{"h2"}
@@ -153,12 +153,12 @@ func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
 		ctx.Close()
 		return nil, err
 	}
-	conn, err := NewConn(ctx, bio, d.Deadline, d.ConnTraceEnabled)
+	conn, err := NewConn(ctx, bio, d.TLS, d.ConnTraceEnabled)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-	if err := conn.Handshake(); err != nil {
+	if err := conn.Handshake(d.Deadline); err != nil {
 		conn.Close()
 		return nil, err
 	}

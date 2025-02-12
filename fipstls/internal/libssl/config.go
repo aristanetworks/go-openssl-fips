@@ -2,8 +2,8 @@ package libssl
 
 // CtxConfig is used to configure the SSLCtx
 type CtxConfig struct {
-	MinTLS     int64
-	MaxTLS     int64
+	MinTLS     uint16
+	MaxTLS     uint16
 	Options    int64
 	VerifyMode int
 	NextProto  string

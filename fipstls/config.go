@@ -44,6 +44,7 @@ const (
 	VerifyPostHandshake
 )
 
+// Config is used to configure a TLS client.
 type Config struct {
 	// LibsslVersion is the libssl version to dynamically load.
 	LibsslVersion string
@@ -60,14 +61,18 @@ type Config struct {
 	// KeyFile is the path to the client private key in PEM format.
 	KeyFile string
 
+	// ServerName is used to verify the hostname on the returned certificates unless
+	// InsecureSkipVerify is given.
+	ServerName string
+
 	// InsecureSkipVerify will skip verifying the peer's certificate chain. VerifyMode is ignored.
 	InsecureSkipVerify bool
 
 	// MinTLSVersion is the minimum TLS version to accept.
-	MinTLSVersion int64
+	MinTLSVersion uint16
 
 	// MaxTLSVersion is the maximum TLS version to use.
-	MaxTLSVersion int64
+	MaxTLSVersion uint16
 
 	// TLSMethod is the TLS method to use.
 	Method Method
@@ -91,11 +96,10 @@ type Config struct {
 	NextProtos []string
 }
 
-// DefaultConfig returns a [Config] with sane default options.
-func NewDefaultConfig() *Config {
+// newDefaultConfig returns a [Config] with sane default options.
+func newDefaultConfig() *Config {
 	return &Config{
-		Method:        ClientMethod,
-		MinTLSVersion: Version12,
-		VerifyMode:    VerifyPeer,
+		Method:     ClientMethod,
+		VerifyMode: VerifyPeer,
 	}
 }
