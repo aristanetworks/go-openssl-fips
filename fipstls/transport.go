@@ -8,10 +8,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"sync"
 )
 
 // Transport implements [http.RoundTripper] by dialing TLS [Conn] using [Dialer].
 type Transport struct {
+	sync.Mutex
+
 	// Dialer is used for creating TLS connections.
 	Dialer *Dialer
 
@@ -70,10 +73,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.Dialer == nil {
 		t.Dialer = NewDialer(nil)
 	}
+
+	// Handle case where there are concurrent requests made using the same Dialer
+	t.Lock()
 	conn, err := t.Dialer.DialContext(req.Context(), "tcp", address)
 	if err != nil {
 		return nil, err
 	}
+	t.Unlock()
 
 	if deadline, ok := req.Context().Deadline(); ok {
 		conn.SetDeadline(deadline)
