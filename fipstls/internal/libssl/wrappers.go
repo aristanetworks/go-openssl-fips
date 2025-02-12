@@ -99,19 +99,6 @@ func SSLCtxFree(sslCtx *SSLCtx) error {
 	return nil
 }
 
-// CtxConfig is used to configure the SSLCtx
-type CtxConfig struct {
-	MinTLS     int64
-	MaxTLS     int64
-	Options    int64
-	VerifyMode int
-	NextProto  string
-	CaFile     string
-	CaPath     string
-	CertFile   string
-	KeyFile    string
-}
-
 func SSLCtxConfigure(ctx *SSLCtx, config *CtxConfig) error {
 	cNextProto := C.CString(config.NextProto)
 	cCaPath := C.CString(config.CaPath)
