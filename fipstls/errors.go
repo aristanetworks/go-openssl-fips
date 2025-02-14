@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
 	"syscall"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/libssl"
@@ -26,35 +27,33 @@ func newConnError(op string, addr net.Addr, err error) error {
 	case libssl.SSL_ERROR_NONE:
 		return nil
 
-	case libssl.SSL_ERROR_WANT_READ, libssl.SSL_ERROR_WANT_WRITE:
-		opErr = &net.OpError{
-			Op:   op,
-			Net:  "tcp",
-			Addr: addr,
-			Err:  syscall.EAGAIN,
-		}
-
 	case libssl.SSL_ERROR_ZERO_RETURN:
+		// Nothing else to do
+		return io.EOF
+
+	case libssl.SSL_ERROR_WANT_READ, libssl.SSL_ERROR_WANT_WRITE:
+		// Temporary error
 		opErr = &net.OpError{
 			Op:   op,
-			Net:  "tcp",
+			Net:  addr.Network(),
 			Addr: addr,
-			Err:  io.EOF,
+			Err:  os.ErrDeadlineExceeded,
 		}
 
 	case libssl.SSL_ERROR_SYSCALL:
+		// Permanent error - connection will be closed
 		opErr = &net.OpError{
 			Op:   op,
-			Net:  "tcp",
+			Net:  addr.Network(),
 			Addr: addr,
-			Err:  syscall.ECONNRESET,
+			Err:  syscall.ESHUTDOWN,
 		}
 
 	default:
 		// Permanent error - connection will be closed
 		opErr = &net.OpError{
 			Op:   op,
-			Net:  "tcp",
+			Net:  addr.Network(),
 			Addr: addr,
 			Err:  sslErr,
 		}
