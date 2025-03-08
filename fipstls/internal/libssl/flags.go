@@ -1,7 +1,9 @@
+//go:build cgo && unix
+
 package libssl
 
 /*
-#include "golibssl.h"
+#include "flags.h"
 */
 import "C"
 

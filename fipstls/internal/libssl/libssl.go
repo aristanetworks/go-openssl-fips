@@ -1,4 +1,4 @@
-//go:build !cmd_go_bootstrap
+//go:build !static && cgo && unix
 
 // Package libssl provides access to OpenSSL TLS methods.
 package libssl

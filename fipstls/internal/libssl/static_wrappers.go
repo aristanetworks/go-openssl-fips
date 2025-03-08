@@ -1,8 +1,13 @@
-//go:build !static && cgo && unix
+//go:build static
 
 package libssl
 
-// #include "golibssl.h"
+// #cgo CFLAGS: -I/usr/include -Wno-deprecated-declarations -Wno-discarded-qualifiers
+// #cgo LDFLAGS: -lssl -lcrypto
+// #include <openssl/ssl.h>
+// #include <openssl/err.h>
+// #include <openssl/bio.h>
+// #include "static_golibssl.h"
 import "C"
 import (
 	"fmt"
@@ -24,11 +29,11 @@ func EnableDebugLogging() {
 }
 
 type SSLMethod struct {
-	inner C.GO_SSL_METHOD_PTR
+	inner *C.SSL_METHOD
 }
 
 func NewTLSMethod() (*SSLMethod, error) {
-	r := C.go_openssl_TLS_method()
+	r := C.TLS_method()
 	if r == nil {
 		return nil, NewOpenSSLError("libssl: TLS_method")
 	}
@@ -36,7 +41,7 @@ func NewTLSMethod() (*SSLMethod, error) {
 }
 
 func NewTLSClientMethod() (*SSLMethod, error) {
-	r := C.go_openssl_TLS_client_method()
+	r := C.TLS_client_method()
 	if r == nil {
 		return nil, NewOpenSSLError("libssl: TLS_client_method")
 	}
@@ -44,7 +49,7 @@ func NewTLSClientMethod() (*SSLMethod, error) {
 }
 
 func NewTLSServerMethod() (*SSLMethod, error) {
-	r := C.go_openssl_TLS_server_method()
+	r := C.TLS_server_method()
 	if r == nil {
 		return nil, NewOpenSSLError("libssl: TLS_server_method")
 	}
@@ -61,14 +66,14 @@ func NewTLSServerMethod() (*SSLMethod, error) {
 // performance reasons. Therefore it is considered best practice to create one SSL_CTX for use by
 // multiple SSL objects instead of having one SSL_CTX for each SSL object that you create.
 type SSLCtx struct {
-	inner C.GO_SSL_CTX_PTR
+	inner *C.SSL_CTX
 }
 
 func NewSSLCtx(tlsMethod *SSLMethod) (*SSLCtx, error) {
 	if tlsMethod == nil {
 		return nil, NewOpenSSLError("libssl: SSL_CTX_new: SSL_method is nil")
 	}
-	r := C.go_openssl_SSL_CTX_new(tlsMethod.inner)
+	r := C.SSL_CTX_new(tlsMethod.inner)
 	if r == nil {
 		return nil, NewOpenSSLError("libssl: SSL_CTX_new")
 	}
@@ -76,7 +81,7 @@ func NewSSLCtx(tlsMethod *SSLMethod) (*SSLCtx, error) {
 }
 
 func SSLCtxSetH2Proto(sslCtx *SSLCtx) error {
-	if r := C.go_openssl_set_h2_alpn(sslCtx.inner, C.int(int(debugLogging))); r != 0 {
+	if r := C.set_h2_alpn(sslCtx.inner, C.int(int(debugLogging))); r != 0 {
 		return NewOpenSSLError("libssl: SSL_CTX_set_alpn_protos: could not set H2 protocol")
 	}
 	return nil
@@ -86,7 +91,7 @@ func SSLStatusALPN(ssl *SSL) string {
 	var proto [256]C.char
 	var length C.int
 
-	ret := C.go_openssl_check_alpn_status(ssl.inner, &proto[0], &length, C.int(int(debugLogging)))
+	ret := C.check_alpn_status(ssl.inner, &proto[0], &length, C.int(int(debugLogging)))
 	if ret == 0 {
 		return "no protocol selected"
 	}
@@ -97,7 +102,7 @@ func SSLCtxFree(sslCtx *SSLCtx) error {
 	if sslCtx == nil {
 		return NewOpenSSLError("libssl: SSL_CTX_free: SSL_CTX is nil")
 	}
-	C.go_openssl_SSL_CTX_free(sslCtx.inner)
+	C.SSL_CTX_free(sslCtx.inner)
 	return nil
 }
 
@@ -112,7 +117,7 @@ func SSLCtxConfigure(ctx *SSLCtx, config *CtxConfig) error {
 	defer C.free(unsafe.Pointer(cCaFile))
 	defer C.free(unsafe.Pointer(cCertFile))
 	defer C.free(unsafe.Pointer(cKeyFile))
-	if r := C.go_openssl_ctx_configure(ctx.inner, C.long(config.MinTLS), C.long(config.MaxTLS),
+	if r := C.ctx_configure(ctx.inner, C.long(config.MinTLS), C.long(config.MaxTLS),
 		C.long(config.Options), C.int(config.VerifyMode), cNextProto, cCaPath, cCaFile, cCertFile,
 		cKeyFile, C.int(int(debugLogging)),
 	); r != 0 {
@@ -124,14 +129,14 @@ func SSLCtxConfigure(ctx *SSLCtx, config *CtxConfig) error {
 // SSL holds data for a TLS connection. It inherits the settings of the underlying context ctx:
 // connection method, options, verification settings, timeout settings.
 type SSL struct {
-	inner C.GO_SSL_PTR
+	inner *C.SSL
 }
 
 func NewSSL(sslCtx *SSLCtx) (*SSL, error) {
 	if sslCtx == nil {
 		return nil, NewOpenSSLError("libssl: SSL_new: SSL_CTX is nil")
 	}
-	r := C.go_openssl_SSL_new(sslCtx.inner)
+	r := C.SSL_new(sslCtx.inner)
 	if r == nil {
 		return nil, NewOpenSSLError("libssl: SSL_new")
 	}
@@ -142,7 +147,7 @@ func SSLFree(ssl *SSL) error {
 	if ssl == nil {
 		return NewOpenSSLError("libssl: SSL_clear: SSL is nil")
 	}
-	C.go_openssl_SSL_free(ssl.inner)
+	C.SSL_free(ssl.inner)
 	return nil
 }
 
@@ -150,7 +155,7 @@ func SSLConnect(ssl *SSL) error {
 	if ssl == nil {
 		return NewOpenSSLError("libssl: SSL_connect: SSL is nil")
 	}
-	if r := C.go_openssl_SSL_connect(ssl.inner); r != 1 {
+	if r := C.SSL_connect(ssl.inner); r != 1 {
 		return newSSLError("libssl: SSL_connect", SSLGetError(ssl, int(r)))
 	}
 	return nil
@@ -162,13 +167,13 @@ func SSLShutdown(ssl *SSL) error {
 	if ssl == nil {
 		return NewOpenSSLError("libssl: SSL_shutdown: SSL is nil")
 	}
-	r := int(C.go_openssl_SSL_shutdown(ssl.inner))
+	r := int(C.SSL_shutdown(ssl.inner))
 	switch r {
 	case 1:
 		return nil
 	case 0:
 		// Bidirectional shutdown must be performed. SSL_shutdown will need to be called again.
-		if r := int(C.go_openssl_SSL_shutdown(ssl.inner)); r < 0 {
+		if r := int(C.SSL_shutdown(ssl.inner)); r < 0 {
 			return newSSLError("libssl: SSL_shutdown", SSLGetError(ssl, r))
 		}
 		return nil
@@ -180,9 +185,9 @@ func SSLShutdown(ssl *SSL) error {
 // SSLGetShutdown returns the shutdown mode of [Conn].
 func SSLGetShutdown(ssl *SSL) int {
 	if ssl == nil {
-		return C.GO_SSL_RECEIVED_SHUTDOWN
+		return C.SSL_RECEIVED_SHUTDOWN
 	}
-	return int(C.go_openssl_SSL_get_shutdown(ssl.inner))
+	return int(C.SSL_get_shutdown(ssl.inner))
 }
 
 // SSLSetShutdown sets the shutdown state of [Conn] to mode.
@@ -190,7 +195,7 @@ func SSLSetShutdown(ssl *SSL, mode int) error {
 	if ssl == nil {
 		return NewOpenSSLError("libssl: SSL_set_shutdown: SSL is nil")
 	}
-	C.go_openssl_SSL_set_shutdown(ssl.inner, C.int(mode))
+	C.SSL_set_shutdown(ssl.inner, C.int(mode))
 	return nil
 }
 
@@ -201,7 +206,7 @@ func SSLWriteEx(ssl *SSL, req []byte) (int, error) {
 	cBytes := C.CBytes(req)
 	defer C.free(cBytes)
 	var written C.size_t
-	r := C.go_openssl_SSL_write_ex(
+	r := C.SSL_write_ex(
 		ssl.inner,
 		cBytes,
 		C.size_t(len(req)),
@@ -219,7 +224,7 @@ func SSLReadEx(ssl *SSL, size int64) ([]byte, int, error) {
 	cBuf := C.malloc(C.size_t(size))
 	defer C.free(cBuf)
 	var readBytes C.size_t
-	r := C.go_openssl_SSL_read_ex(
+	r := C.SSL_read_ex(
 		ssl.inner,
 		cBuf,
 		C.size_t(size),
@@ -234,7 +239,7 @@ func SSLGetVerifyResult(ssl *SSL) error {
 	if ssl == nil {
 		return NewOpenSSLError("libssl: SSL_get_verify_result: SSL is nil")
 	}
-	res := int64(C.go_openssl_SSL_get_verify_result(ssl.inner))
+	res := int64(C.SSL_get_verify_result(ssl.inner))
 	if res != X509_V_OK {
 		return NewOpenSSLError(fmt.Sprintf("libssl: SSL_get_verify_result: %s",
 			X509VerifyCertErrorString(res)))
@@ -243,19 +248,19 @@ func SSLGetVerifyResult(ssl *SSL) error {
 }
 
 func X509VerifyCertErrorString(n int64) string {
-	return C.GoString(C.go_openssl_X509_verify_cert_error_string(C.long(n)))
+	return C.GoString(C.X509_verify_cert_error_string(C.long(n)))
 }
 
 func SSLGetError(ssl *SSL, ret int) int {
-	return int(C.go_openssl_SSL_get_error(ssl.inner, C.int(ret)))
+	return int(C.SSL_get_error(ssl.inner, C.int(ret)))
 }
 
 func SSLClearError() {
-	C.go_openssl_ERR_clear_error()
+	C.ERR_clear_error()
 }
 
 type BIO struct {
-	inner C.GO_BIO_PTR
+	inner *C.BIO
 }
 
 func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
@@ -263,14 +268,20 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 	cPort := C.CString(port)
 	defer C.free(unsafe.Pointer(cHost))
 	defer C.free(unsafe.Pointer(cPort))
-	bio := C.go_openssl_create_bio(cHost, cPort, C.int(family), C.int(mode), C.int(int(debugLogging)))
+	bio := C.create_bio(
+		cHost,
+		cPort,
+		C.int(family),
+		C.int(mode),
+		C.int(int(debugLogging)),
+	)
 	if bio == nil {
 		return nil, -1, NewOpenSSLError("libssl: create_bio")
 	}
 	var sockfd C.int
-	if r := C.go_openssl_BIO_ctrl(
+	if r := C.BIO_ctrl(
 		bio,
-		C.GO_BIO_C_GET_FD,
+		C.BIO_C_GET_FD,
 		C.long(0),
 		unsafe.Pointer(&sockfd)); r == -1 {
 		return nil, -1, NewOpenSSLError("libssl: create_bio: BIO not initialized")
@@ -281,7 +292,7 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 func SSLConfigureBIO(ssl *SSL, bio *BIO, hostname string) error {
 	cHost := C.CString(hostname)
 	defer C.free(unsafe.Pointer(cHost))
-	if r := C.go_openssl_ssl_configure_bio(ssl.inner, bio.inner, cHost,
+	if r := C.ssl_configure_bio(ssl.inner, bio.inner, cHost,
 		C.int(int(debugLogging))); r != 0 {
 		return newSSLError("libssl: ssl_configure_bio", SSLGetError(ssl, int(r)))
 	}
@@ -292,6 +303,6 @@ func BIOFree(bio *BIO) error {
 	if bio == nil {
 		return NewOpenSSLError("libssl: BIO_free_all: BIO is nil")
 	}
-	C.go_openssl_BIO_free_all(bio.inner)
+	C.BIO_free_all(bio.inner)
 	return nil
 }

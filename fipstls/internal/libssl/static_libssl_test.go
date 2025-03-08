@@ -1,4 +1,4 @@
-//go:build !static && cgo && unix
+//go:build static
 
 package libssl_test
 
@@ -15,15 +15,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	v := libssl.GetVersion()
-	fmt.Printf("Using %s\n", v)
-	err := libssl.Init(v)
-	if err != nil {
-		// An error here could mean that this Linux distro does not have a supported OpenSSL version
-		// or that there is a bug in the Init code.
-		panic(err)
-	}
-	_ = libssl.SetFIPS(true) // Skip the error as we still want to run the tests on machines without FIPS support.
+	_ = libssl.SetFIPS(
+		true,
+	) // Skip the error as we still want to run the tests on machines without FIPS support.
 	fmt.Println("OpenSSL version:", libssl.VersionText())
 	fmt.Println("FIPS enabled:", libssl.FIPS())
 	status := m.Run()
@@ -37,25 +31,8 @@ func TestMain(m *testing.M) {
 	os.Exit(status)
 }
 
-func TestCheckVersion(t *testing.T) {
-	defer testutils.LeakCheck(t)
-	v := libssl.GetVersion()
-	exists, fips := libssl.CheckVersion(v)
-	if !exists {
-		t.Fatalf("OpenSSL version %q not found", v)
-	}
-	if want := libssl.FIPS(); want != fips {
-		t.Fatalf("FIPS mismatch: want %v, got %v", want, fips)
-	}
-}
-
 func TestSSL_connect(t *testing.T) {
 	defer testutils.LeakCheck(t)
-	v := libssl.GetVersion()
-	err := libssl.Init(v)
-	if err != nil {
-		panic(err)
-	}
 
 	method, err := libssl.NewTLSClientMethod()
 	if err != nil {
@@ -105,11 +82,6 @@ func TestSSL_connect(t *testing.T) {
 
 func TestBlockingClient(t *testing.T) {
 	defer testutils.LeakCheck(t)
-	v := libssl.GetVersion()
-	err := libssl.Init(v)
-	if err != nil {
-		panic(err)
-	}
 	var hostname, port = "example.com", "443"
 	// Create an SSL_CTX
 	method, err := libssl.NewTLSClientMethod()
