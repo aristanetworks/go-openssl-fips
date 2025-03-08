@@ -44,7 +44,7 @@ func NewCtx(tls *Config) (*Context, error) {
 	}
 	ctx := &Context{closer: noopCloser{}}
 	if err := ctx.new(tls); err != nil {
-		return nil, err
+		return ctx, err
 	}
 	return ctx, nil
 }

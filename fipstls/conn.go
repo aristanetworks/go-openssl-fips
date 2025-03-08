@@ -404,13 +404,13 @@ func (c *Conn) retryable(err error, kind string) retryResult {
 				syscall.SO_ERROR)
 			if sockErr != nil {
 				c.l.trace("%s failed! could not get errno: %v", kind, errno)
-				return retryResult{false, newConnError(kind, c.remoteAddr, sockErr), 0}
+				return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), sockErr), 0}
 			}
 
 			if errno != 0 {
 				c.l.trace("%s failed! errno: %v openssl error: %s", kind, errno,
 					libssl.NewOpenSSLError(""))
-				return retryResult{false, newConnError(kind, c.remoteAddr, err), 0}
+				return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), err), 0}
 			}
 
 			// For other zero errno cases, retry
@@ -430,7 +430,7 @@ func (c *Conn) retryable(err error, kind string) retryResult {
 
 	// Default error handling for non-SSL errors or unhandled SSL errors
 	c.l.trace("%v error: %v", kind, err)
-	return retryResult{false, newConnError(kind, c.remoteAddr, err), 0}
+	return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), err), 0}
 }
 
 // ioLoop executes an SSL operation with proper error handling and retries
