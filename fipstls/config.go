@@ -5,8 +5,6 @@ import (
 )
 
 // TLS version constants.
-type Version int
-
 const (
 	Version1  = libssl.TLS1_VERSION
 	Version11 = libssl.TLS1_1_VERSION

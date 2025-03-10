@@ -29,7 +29,6 @@ func Init(version string) error {
 type Context struct {
 	ctx    *libssl.SSLCtx
 	closer Closer
-	unsafe bool
 }
 
 // NewCtx configures the [Context] and allocates a C.SSL_CTX object.

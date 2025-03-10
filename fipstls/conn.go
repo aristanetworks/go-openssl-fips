@@ -46,10 +46,6 @@ type Conn struct {
 
 	// l is a logger
 	l logger
-
-	// net
-	localAddr  net.Addr
-	remoteAddr net.Addr
 }
 
 var (
