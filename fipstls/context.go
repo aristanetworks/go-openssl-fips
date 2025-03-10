@@ -25,6 +25,31 @@ func Init(version string) error {
 	return nil
 }
 
+// Version returns the dynamically loaded libssl.so version, or an empty string otherwise.
+func Version() string {
+	if !libsslInit {
+		return ""
+	}
+	return libssl.VersionText()
+}
+
+// FIPSMode returns true if FIPS mode is enabled in the dynamically loaded libssl.so, and false
+// otherwise.
+func FIPSMode() bool {
+	if !libsslInit {
+		return false
+	}
+	return libssl.FIPS()
+}
+
+// SetFIPS can be used to enable FIPS mode in the dynamically loaded libssl.so.
+func SetFIPS(enabled bool) error {
+	if !libsslInit {
+		return ErrLoadLibSslFailed
+	}
+	return libssl.SetFIPS(enabled)
+}
+
 // Context is used for configuring and creating SSL [Conn] connections.
 type Context struct {
 	ctx    *libssl.SSLCtx
