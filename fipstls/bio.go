@@ -19,6 +19,13 @@ type BIO struct {
 	remoteAddr net.Addr
 }
 
+func (b *BIO) String() string {
+	return fmt.Sprintf("%-20s %-20s %-5s",
+		fmt.Sprintf("local=%+v", b.localAddr),
+		fmt.Sprintf("remote=%+v", b.remoteAddr),
+		fmt.Sprintf("conn=%+v", b.sockfd))
+}
+
 const (
 	SOCK_BLOCK = iota
 	SOCK_NONBLOCK

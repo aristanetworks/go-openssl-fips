@@ -2,6 +2,7 @@ package fipstls_test
 
 import (
 	"flag"
+	"os"
 	"testing"
 
 	"github.com/aristanetworks/go-openssl-fips/fipstls"
@@ -39,7 +40,7 @@ func initTest(t *testing.T) {
 func getDialOpts() []fipstls.DialOption {
 	o := []fipstls.DialOption{}
 	if *enableClientTrace {
-		o = append(o, fipstls.WithConnTracingEnabled())
+		o = append(o, fipstls.WithLogging(fipstls.LevelInfo, os.Stderr))
 	}
 	return o
 }

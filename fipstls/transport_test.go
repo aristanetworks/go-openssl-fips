@@ -20,12 +20,7 @@ func TestTransportConcurrency(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("SSL Transport", func(t *testing.T) {
-		opts := []fipstls.DialOption{}
-		if *enableClientTrace {
-			opts = append(opts, fipstls.WithConnTracingEnabled())
-		}
-
-		client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, opts...)
+		client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
 		createRequests(t, ts, client)
 	})
 }

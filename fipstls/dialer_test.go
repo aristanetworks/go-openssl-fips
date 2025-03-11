@@ -41,14 +41,9 @@ func TestDialTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := []fipstls.DialOption{}
-	if *enableClientTrace {
-		opts = append(opts, fipstls.WithConnTracingEnabled())
-	}
-
 	d := fipstls.NewDialer(
 		&fipstls.Config{CaFile: ts.CaFile},
-		opts...,
+		getDialOpts()...,
 	)
 	conn, err := d.DialContext(context.Background(), "tcp", u.Host)
 	if err != nil {
@@ -256,12 +251,8 @@ func TestGrpcDial(t *testing.T) {
 	t.Logf("Server listening on: %s", addr)
 
 	t.Log("Creating new DialFn")
-	fipsOpts := []fipstls.DialOption{}
-	if *enableClientTrace {
-		fipsOpts = append(fipsOpts, fipstls.WithConnTracingEnabled())
-	}
 	dialFn := fipstls.NewDialContext(&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
-		fipsOpts...)
+		getDialOpts()...)
 
 	t.Log("Attempting raw connection...")
 	rawConn, err := dialFn(context.Background(), addr)

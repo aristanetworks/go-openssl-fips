@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"sync"
@@ -45,44 +44,49 @@ type Conn struct {
 	handshakeDeadline atomicTime
 
 	// l is a logger
-	l logger
+	l Logger
 }
 
-var (
-	opRead      = "read"
-	opWrite     = "write"
-	opShutdown  = "close"
-	opHandshake = "handshake"
+const (
+	opRead        = "read"
+	opWrite       = "write"
+	opShutdown    = "close"
+	opHandshake   = "handshake"
+	connLogPrefix = "[fipstls.Conn] "
 )
 
-type logger interface {
-	trace(string, ...any)
-}
-
-type noopLogger struct{}
-
-func (noopLogger) trace(string, ...any) {}
-
+// connLogger adds connection context to log messages
 type connLogger struct {
-	localAddr  net.Addr
-	remoteAddr net.Addr
-	fd         int
-	logger     *log.Logger
+	Logger
+	bio string
 }
 
-func (c *connLogger) trace(format string, v ...any) {
-	c.logger.Printf(
-		"%s %-40s %-20s %-20s %-5s",
-		"[fipstls.Conn]",
-		fmt.Sprintf(format, v...),
-		fmt.Sprintf("local=%+v", c.localAddr),
-		fmt.Sprintf("remote=%+v", c.remoteAddr),
-		fmt.Sprintf("conn=%+v", c.fd),
+func newConnLogger(l Logger, bio string) Logger {
+	return &connLogger{
+		Logger: l.WithPrefix(connLogPrefix),
+		bio:    bio,
+	}
+}
+
+func (c *connLogger) Log(level int, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fullMsg := fmt.Sprintf(
+		"%-40s %s",
+		msg,
+		c.bio,
 	)
+	c.Logger.Log(level, "%s", fullMsg)
+}
+
+func (c *connLogger) WithPrefix(prefix string) Logger {
+	return &connLogger{
+		Logger: c.Logger.WithPrefix(prefix),
+		bio:    c.bio,
+	}
 }
 
 // NewConn creates a TLS [Conn] from a [Context] and [BIO].
-func NewConn(ctx *Context, bio *BIO, tls *Config, trace bool) (*Conn, error) {
+func NewConn(ctx *Context, bio *BIO, tls *Config, l Logger) (*Conn, error) {
 	if !libsslInit {
 		return nil, ErrNoLibSslInit
 	}
@@ -103,17 +107,12 @@ func NewConn(ctx *Context, bio *BIO, tls *Config, trace bool) (*Conn, error) {
 		return nil, err
 	}
 	c.closer = newOnceCloser(func() error {
-		c.l.trace("Closer.close called")
+		c.l.Log(LevelDebug, "Closer.close called")
 		libssl.SSLFree(c.ssl)
 		return ctx.closer.Close()
 	})
-	if trace {
-		c.l = &connLogger{
-			localAddr:  bio.LocalAddr(),
-			remoteAddr: bio.RemoteAddr(),
-			fd:         bio.FD(),
-			logger:     log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile),
-		}
+	if _, ok := l.(noopLogger); !ok {
+		c.l = newConnLogger(l, bio.String())
 	}
 	return c, nil
 }
@@ -126,6 +125,7 @@ func (c *Conn) configureBIO() error {
 		hostname = c.bio.Hostname()
 	}
 	if err := libssl.SSLConfigureBIO(c.ssl, c.bio.BIO(), hostname); err != nil {
+		c.l.Log(LevelError, "Failed to configure BIO: %v", err)
 		return err
 	}
 	return nil
@@ -138,12 +138,12 @@ func (c *Conn) connect() error {
 
 // Handshake initiates a TLS handshake with the peer.
 func (c *Conn) Handshake(deadline time.Time) error {
-	c.l.trace("Handshake begin")
-	defer c.l.trace("Handshake end")
+	c.l.Log(LevelDebug, "Handshake begin")
+	defer c.l.Log(LevelDebug, "Handshake end")
 	c.handshakeDeadline.Store(deadline)
 	_, err := c.doIO(nil, func(b []byte) (int, error) { return 0, c.connect() }, opHandshake)
 	if err != nil {
-		c.l.trace("Post-Handshake negotiated protocols: %v", libssl.SSLStatusALPN(c.ssl))
+		c.l.Log(LevelDebug, "Post-Handshake negotiated protocols: %v", libssl.SSLStatusALPN(c.ssl))
 	}
 	return err
 }
@@ -174,8 +174,8 @@ func (c *Conn) read(b []byte) (int, error) {
 
 // Read will read bytes into the buffer from the [Conn] connection, wrapped in an optional deadline.
 func (c *Conn) Read(b []byte) (int, error) {
-	c.l.trace("Read begin")
-	defer c.l.trace("Read end")
+	c.l.Log(LevelDebug, "Read begin")
+	defer c.l.Log(LevelDebug, "Read end")
 	c.in.Lock()
 	defer c.in.Unlock()
 	if c.closed.Load() {
@@ -200,11 +200,11 @@ var ErrShutdown = errors.New("fipstls: protocol is shutdown")
 
 // Write will write bytes from the buffer to the [Conn] connection, wrapped in an optional deadline.
 func (c *Conn) Write(b []byte) (int, error) {
-	c.l.trace("Write begin")
-	defer c.l.trace("Write end")
+	c.l.Log(LevelDebug, "Write begin")
+	defer c.l.Log(LevelDebug, "Write end")
 	// interlock with Close below
 	for {
-		c.l.trace("Write waiting...")
+		c.l.Log(LevelDebug, "Write waiting...")
 		x := c.activeCall.Load()
 		if x&1 != 0 {
 			return 0, net.ErrClosed
@@ -214,7 +214,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 		}
 	}
 	defer c.activeCall.Add(-2)
-	c.l.trace("Write grabbed lock")
+	c.l.Log(LevelDebug, "Write grabbed lock")
 	c.out.Lock()
 	defer c.out.Unlock()
 	if c.closeNotifySent {
@@ -237,25 +237,25 @@ func (c *Conn) shutdown() error {
 // Close will attempt to cleanly shutdown the [Conn] connection and free [Conn] and optionally
 // [Context] resources if a non-empty context was provided.
 func (c *Conn) Close() error {
-	c.l.trace("Close begin")
-	defer c.l.trace("Close end")
+	c.l.Log(LevelDebug, "Close begin")
+	defer c.l.Log(LevelDebug, "Close end")
 	var x int32
 	for {
-		c.l.trace("Close waiting...")
+		c.l.Log(LevelDebug, "Close waiting...")
 		x = c.activeCall.Load()
 		if x&1 != 0 {
 			if c.closed.Load() {
-				c.l.trace("Close connection is closed, returning: %v", c.closeErr)
+				c.l.Log(LevelDebug, "Close connection is closed, returning: %v", c.closeErr)
 				return c.closeErr
 			}
-			c.l.trace("Close connection is not closed, returning: %v", net.ErrClosed)
+			c.l.Log(LevelDebug, "Close connection is not closed, returning: %v", net.ErrClosed)
 			return net.ErrClosed
 		}
 		if c.activeCall.CompareAndSwap(x, x|1) {
 			break
 		}
 	}
-	c.l.trace("Close grabbed lock")
+	c.l.Log(LevelDebug, "Close grabbed lock")
 	if x != 0 {
 		// io.Writer and io.Closer should not be used concurrently.
 		// If Close is called while a Write is currently in-flight,
@@ -263,7 +263,7 @@ func (c *Conn) Close() error {
 		// being used to break the Write and/or clean up resources and
 		// avoid sending the alertCloseNotify, which may block
 		// waiting on handshakeMutex or the c.out mutex.
-		c.l.trace("Force closing to handle Close-during-Write")
+		c.l.Log(LevelDebug, "Force closing to handle Close-during-Write")
 		if c.closed.Load() {
 			return c.closeErr
 		}
@@ -278,8 +278,8 @@ func (c *Conn) Close() error {
 // closeNotify closes the Write side of the connection by sending a close notify shutdown alert
 // message to the peer.
 func (c *Conn) closeNotify() error {
-	c.l.trace("Close-notify begin")
-	defer c.l.trace("Close-notify end")
+	c.l.Log(LevelDebug, "Close-notify begin")
+	defer c.l.Log(LevelDebug, "Close-notify end")
 	c.out.Lock()
 	defer c.out.Unlock()
 	if !c.closeNotifySent && !c.closed.Load() {
@@ -287,7 +287,7 @@ func (c *Conn) closeNotify() error {
 		c.SetWriteDeadline(time.Now().Add(time.Second * 5))
 		_, c.closeErr = c.doIO(nil, func(b []byte) (int, error) { return 0, c.shutdown() },
 			opShutdown)
-		c.l.trace("close error is: %v", c.closeErr)
+		c.l.Log(LevelDebug, "Close error: %v", c.closeErr)
 		defer c.closer.Done()
 		defer c.closer.Close()
 		c.closeNotifySent = true
@@ -325,7 +325,7 @@ func (t *atomicTime) Load() time.Time {
 // and any currently-blocked [SSL.Read] call.
 // A zero value for t means Read will not time out.
 func (c *Conn) SetReadDeadline(t time.Time) error {
-	c.l.trace("New rdeadline")
+	c.l.Log(LevelDebug, "New rdeadline")
 	c.readDeadline.Store(t)
 	return nil
 }
@@ -336,7 +336,7 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 // some of the data was successfully written.
 // A zero value for t means Write will not time out.
 func (c *Conn) SetWriteDeadline(t time.Time) error {
-	c.l.trace("New wdeadline")
+	c.l.Log(LevelDebug, "New wdeadline")
 	c.writeDeadline.Store(t)
 	return nil
 }
@@ -355,27 +355,27 @@ type retryResult struct {
 
 // retryable processes SSL errors and determines whether to retry operations
 func (c *Conn) retryable(err error, kind string) retryResult {
-	c.l.trace("%v non-blocking handleSSLError", kind)
+	c.l.Log(LevelDebug, "Got %v error", kind)
 	if err == nil {
 		return retryResult{false, nil, 0}
 	}
 
 	// Handle SSL-specific errors
-	c.l.trace("%v non-blocking got %v", kind, libssl.NewOpenSSLError(""))
+	c.l.Log(LevelDebug, "%v non-blocking got %v", kind, libssl.NewOpenSSLError(""))
 	if sslErr, ok := err.(*libssl.SSLError); ok {
 		switch sslErr.Code {
 		case libssl.SSL_ERROR_WANT_READ, libssl.SSL_ERROR_WANT_WRITE:
-			c.l.trace("%v non-blocking wants read/write", kind)
+			c.l.Log(LevelDebug, "%v non-blocking wants read/write", kind)
 			return retryResult{true, nil, time.Millisecond}
 
 		case libssl.SSL_ERROR_ZERO_RETURN:
-			c.l.trace("%v non-blocking return zero", kind)
+			c.l.Log(LevelDebug, "%v non-blocking return zero", kind)
 			return retryResult{false, io.EOF, 0}
 
 		case libssl.SSL_ERROR_SSL:
 			switch kind {
 			case opShutdown:
-				c.l.trace("%s non-blocking forced closed", kind)
+				c.l.Log(LevelDebug, "%s non-blocking forced closed", kind)
 				return retryResult{false, nil, 0}
 			case opHandshake:
 				// Check verification error first
@@ -399,12 +399,12 @@ func (c *Conn) retryable(err error, kind string) retryResult {
 			errno, sockErr := syscall.GetsockoptInt(c.bio.FD(), syscall.SOL_SOCKET,
 				syscall.SO_ERROR)
 			if sockErr != nil {
-				c.l.trace("%s failed! could not get errno: %v", kind, errno)
+				c.l.Log(LevelDebug, "%s failed, could not get errno: %v", kind, errno)
 				return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), sockErr), 0}
 			}
 
 			if errno != 0 {
-				c.l.trace("%s failed! errno: %v openssl error: %s", kind, errno,
+				c.l.Log(LevelDebug, "%s failed, errno: %v openssl error: %s", kind, errno,
 					libssl.NewOpenSSLError(""))
 				return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), err), 0}
 			}
@@ -425,7 +425,7 @@ func (c *Conn) retryable(err error, kind string) retryResult {
 	}
 
 	// Default error handling for non-SSL errors or unhandled SSL errors
-	c.l.trace("%v error: %v", kind, err)
+	c.l.Log(LevelDebug, "%v error: %v", kind, err)
 	return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), err), 0}
 }
 
@@ -468,8 +468,8 @@ func (c *Conn) ioLoop(b []byte, op func([]byte) (int, error), kind string, done 
 }
 
 func (c *Conn) doIO(b []byte, op func([]byte) (int, error), kind string) (int, error) {
-	c.l.trace("%v non-blocking begin", kind)
-	defer c.l.trace("%v non-blocking end", kind)
+	c.l.Log(LevelDebug, "%v non-blocking begin", kind)
+	defer c.l.Log(LevelDebug, "%v non-blocking end", kind)
 
 	done := make(chan struct{})
 	outCh := make(chan ioResult, 1)

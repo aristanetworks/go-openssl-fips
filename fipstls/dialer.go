@@ -2,12 +2,15 @@ package fipstls
 
 import (
 	"context"
+	"io"
 	"net"
 	"time"
 )
 
 // DefaultNetwork is the default network to dial connections over.
 var DefaultNetwork = "tcp4"
+
+const dialLogPrefix = "[fipstls.Dialer]"
 
 // Dialer is used for dialing [Conn] connections.
 type Dialer struct {
@@ -34,11 +37,12 @@ type Dialer struct {
 	// as with the Timeout option.
 	Deadline time.Time
 
-	// ConnTraceEnabled enables debug tracing in the [Conn].
-	ConnTraceEnabled bool
-
 	// Network is one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or "unix".
 	Network string
+
+	// Logger is a simple logging implementation used to log at 3 verbosity levels:
+	// [LevelError], [LevelInfo], and [LevelDebug].
+	Logger Logger
 }
 
 // DialOption is used for configuring the [Dialer].
@@ -58,17 +62,31 @@ func WithDeadline(deadline time.Time) DialOption {
 	}
 }
 
-// WithConnTracingEnabled enables tracing for the dialer.
-func WithConnTracingEnabled() DialOption {
-	return func(d *Dialer) {
-		d.ConnTraceEnabled = true
-	}
-}
-
 // WithNetwork can be one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or "unix".
 func WithNetwork(network string) DialOption {
 	return func(d *Dialer) {
 		d.Network = network
+	}
+}
+
+// WithLogger enables logging with a custom logger.
+func WithLogger(logger Logger) DialOption {
+	return func(d *Dialer) {
+		d.Logger = logger
+	}
+}
+
+// WithLogging enables logging with the specified level and output writer.
+func WithLogging(level int, w io.Writer) DialOption {
+	return func(d *Dialer) {
+		d.Logger = newDefaultLogger(level, w, dialLogPrefix)
+	}
+}
+
+// WithLogPrefix sets a prefix for all logs.
+func WithLogPrefix(prefix string) DialOption {
+	return func(d *Dialer) {
+		d.Logger = d.Logger.WithPrefix(prefix)
 	}
 }
 
@@ -77,7 +95,8 @@ func NewDialer(tls *Config, opts ...DialOption) *Dialer {
 	if tls == nil {
 		tls = newDefaultConfig()
 	}
-	d := &Dialer{TLS: tls, Network: DefaultNetwork}
+	// Create with disabled logging by default
+	d := &Dialer{TLS: tls, Network: DefaultNetwork, Logger: &noopLogger{}}
 	for _, o := range opts {
 		o(d)
 	}
@@ -113,6 +132,7 @@ type dialResult struct {
 }
 
 func (d *Dialer) dial(ctx context.Context, addr string) (net.Conn, error) {
+	d.Logger.Log(LevelInfo, "Dialing with FIPS Mode = %v, Version = %s", FIPSMode(), Version())
 	bio, err := d.dialBIO(ctx, d.Network, addr)
 	if err != nil {
 		bio.Close()
@@ -122,6 +142,8 @@ func (d *Dialer) dial(ctx context.Context, addr string) (net.Conn, error) {
 }
 
 func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error) {
+	d.Logger.Log(LevelInfo, "Dialing '%s:%s' begin", network, addr)
+	defer d.Logger.Log(LevelInfo, "Dialing '%s:%s' end", network, addr)
 	deadline := d.deadline(ctx, time.Now())
 	if !deadline.IsZero() {
 		if d, ok := ctx.Deadline(); !ok || deadline.Before(d) {
@@ -141,6 +163,7 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 		return &BIO{closer: noopCloser{}}, ctx.Err()
 	case b := <-ch:
 		if b.err != nil {
+			d.Logger.Log(LevelError, "Creating BIO failed: %v", b.err)
 			return b.bio, b.err
 		}
 		return b.bio, nil
@@ -148,17 +171,21 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 }
 
 func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
+	d.Logger.Log(LevelInfo, "New connection: %s", bio)
 	ctx, err := NewCtx(d.TLS)
 	if err != nil {
+		d.Logger.Log(LevelError, "Creating context failed: %v", err)
 		ctx.Close()
 		return nil, err
 	}
-	conn, err := NewConn(ctx, bio, d.TLS, d.ConnTraceEnabled)
+	conn, err := NewConn(ctx, bio, d.TLS, d.Logger)
 	if err != nil {
+		d.Logger.Log(LevelError, "Creating connection failed: %v", err)
 		conn.Close()
 		return nil, err
 	}
 	if err := conn.Handshake(d.Deadline); err != nil {
+		d.Logger.Log(LevelError, "Handshake failed: %v", err)
 		conn.Close()
 		return nil, err
 	}
