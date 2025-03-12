@@ -1,13 +1,13 @@
 # Used to test forward compatibility of glibc 2.17
-FROM centos:7.9.2009 AS golang-1.23-centos
+FROM centos:7.9.2009 AS golang-centos
 
 # install golang
 ENV PATH=$PATH:/usr/local/go/bin
 RUN <<EOF
 set -e
 
-curl -L -o go1.23.2.linux-amd64.tar.gz https://go.dev/dl/go1.23.2.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz
+curl -L -o go1.24.1.linux-amd64.tar.gz https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
+rm -rf /usr/local/go && tar -C /usr/local -xzf go1.24.1.linux-amd64.tar.gz
 go version
 EOF
 
@@ -27,7 +27,7 @@ rpm -ivh --force \
     https://vault.centos.org/7.9.2009/os/x86_64/Packages/libgomp-4.8.5-44.el7.x86_64.rpm
 EOF
 
-FROM golang-1.23-centos AS test-noossl-fallback
+FROM golang-centos AS test-noossl-fallback
 
 COPY . /go/src/fipstls
 
@@ -47,7 +47,7 @@ export GO_OPENSSL_VERSION_OVERRIDE="4.20"
 EOF
 
 # test 2.17 binary on glibc 2.31
-FROM golang:1.23.2-bullseye AS test-ossl1.1.1-glibc2.31
+FROM golang:1.24.1-bullseye AS test-ossl1.1.1-glibc2.31
 COPY --from=test-noossl-fallback /go/src/fipstls /go/src/fipstls
 
 WORKDIR /go/src/fipstls
@@ -62,7 +62,7 @@ go test -tags netgo -c -o ssl-client-glibc-2.17 fipstls_test.go client_test.go
 EOF
 
 # test 2.17 binary on glibc 2.36
-FROM golang:1.23.2-bookworm AS test-ossl3-glibc2.36
+FROM golang:1.24.1-bookworm AS test-ossl3-glibc2.36
 COPY --from=test-noossl-fallback /go/src/fipstls /go/src/fipstls
 
 WORKDIR /go/src/fipstls
@@ -79,7 +79,7 @@ WORKDIR /go/src/fipstls
 RUN ./scripts/test.sh -main && ./scripts/test.sh -asan && ./scripts/test.sh -fallback
 
 # build & test on alpine
-FROM golang:1.23.2-alpine AS test-ossl3-alpine
+FROM golang:1.24.1-alpine AS test-ossl3-alpine
 
 RUN apk add --no-cache gcc musl-dev
 
