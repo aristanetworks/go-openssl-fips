@@ -17,7 +17,6 @@ var (
 	enableServerTrace  = flag.Bool("traceserver", false, "Enable server connection tracing")
 	enableProgRecorder = flag.Bool("tracegrpc", false, "Enable progress recorder output")
 	enableCgoTrace     = flag.Bool("tracecgo", false, "Enable connection setup tracing in C helper functions")
-	disableParallel    = flag.Bool("noparallel", false, "Disable running tests in parallel")
 )
 
 func TestMain(m *testing.M) {
@@ -26,9 +25,6 @@ func TestMain(m *testing.M) {
 }
 
 func initTest(t *testing.T) {
-	if t != nil && !*disableParallel {
-		t.Parallel()
-	}
 	if err := fipstls.Init(""); err != nil {
 		t.Fatalf("failed to load libssl: %v", err)
 	}

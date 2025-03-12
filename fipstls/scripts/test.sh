@@ -4,14 +4,14 @@ set -ex
 
 export CGO_ENABLED=1
 # DEBUG_FLAGS="-tracegrpc -traceclient -traceserver -tracecgo"
-TEST_FLAGS="-v -count=1 -failfast -parallel 4 $DEBUG_FLAGS"
+TEST_FLAGS="-v -count=1 -failfast $DEBUG_FLAGS"
 GODEBUG_OPTS="http2debug=2,http2client=2,http2server=2,netdns=debug"
 # export GODEBUG=$GODEBUG_OPTS
 
 case "$1" in
 -m | -main)
     echo "Running main unit tests..."
-    go test $TEST_FLAGS ./...
+    go test $TEST_FLAGS -traceclient ./...
     go test $TEST_FLAGS -stresstest -run TestGrpcBidiStress ./...
     go test -v -count=1 -fallbacktest -run TestInitFailure .
     break
@@ -19,13 +19,13 @@ case "$1" in
 -a | -asan)
     if [ ! -f "/etc/alpine-release" ]; then
         echo "Running tests with address sanitizer..."
-        go test $TEST_FLAGS -noparallel -stresstest -tags=asan -asan ./...
+        go test $TEST_FLAGS -stresstest -tags=asan -asan ./...
     fi
     break
     ;;
 -r | -race)
     echo "Running tests with race detector..."
-    go test $TEST_FLAGS -noparallel -stresstest -race ./...
+    go test $TEST_FLAGS -stresstest -race ./...
     break
     ;;
 -c | -cover)
