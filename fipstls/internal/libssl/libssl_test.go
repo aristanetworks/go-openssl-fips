@@ -24,6 +24,7 @@ func TestMain(m *testing.M) {
 	_ = libssl.SetFIPS(true) // Skip the error as we still want to run the tests on machines without FIPS support.
 	fmt.Println("OpenSSL version:", libssl.VersionText())
 	fmt.Println("FIPS enabled:", libssl.FIPS())
+	fmt.Println("FIPS capable:", libssl.FIPSCapable())
 	status := m.Run()
 	for range 5 {
 		// Run GC a few times to avoid false positives in leak detection.
@@ -185,4 +186,74 @@ func TestBlockingClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("Connection closed successfully")
+}
+
+func TestSetFIPS(t *testing.T) {
+	defer testutils.LeakCheck(t)
+
+	// Store the initial FIPS state to restore it later
+	originalFIPSState := libssl.FIPS()
+	t.Cleanup(func() {
+		// Restore the previous FIPS mode after test
+		err := libssl.SetFIPS(originalFIPSState)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	testCases := []struct {
+		name     string
+		fipsMode bool
+		wantErr  bool
+	}{
+		{
+			name:     "FIPS Enabled",
+			fipsMode: true,
+			wantErr:  true, // CheckFIPS should return an error
+		},
+		{
+			name:     "FIPS Disabled",
+			fipsMode: false,
+			wantErr:  false, // CheckFIPS should not return an error
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("Testing SetFIPS(%v)", tc.fipsMode)
+
+			// Set the desired FIPS mode
+			err := libssl.SetFIPS(tc.fipsMode)
+			if err != nil {
+				t.Fatalf("SetFIPS(%v) failed: %v", tc.fipsMode, err)
+			}
+
+			// Verify the FIPS mode was set correctly
+			if got := libssl.FIPS(); got != tc.fipsMode {
+				t.Fatalf("FIPS mode mismatch: want %v, got %v", tc.fipsMode, got)
+			}
+
+			// Check that FIPS mode is actually working as expected
+			t.Logf("Check that FIPS mode is: %v", tc.fipsMode)
+			err = libssl.CheckFIPS()
+			if tc.wantErr && err == nil {
+				t.Fatalf("Expected error, got none")
+			} else {
+				t.Logf("CheckFIPS() err = %v", err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			// Additional FIPS info if available in current mode
+			if tc.fipsMode {
+				info, err := libssl.GetFipsProviderInfo()
+				if err != nil {
+					t.Logf("GetFipsProviderInfo() failed: %v", err)
+				} else {
+					t.Logf("FIPS Provider Info is: %s", info)
+				}
+			}
+		})
+	}
 }

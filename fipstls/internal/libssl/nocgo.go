@@ -167,6 +167,9 @@ func CreateBIO(hostname, port string, family, mode int) (*BIO, int, error) {
 }
 func EnableDebugLogging()                                       {}
 func FIPS() bool                                                { return false }
+func FIPSCapable() bool                                         { return false }
+func CheckFIPS() error                                          { return nil }
+func GetFipsProviderInfo() (string, error)                      { return "", nil }
 func GetVersion() string                                        { return "" }
 func Init(file string) error                                    { return ErrMethodUnimplemented }
 func NewOpenSSLError(msg string) error                          { return ErrMethodUnimplemented }

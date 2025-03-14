@@ -472,3 +472,60 @@ int go_openssl_check_alpn_status(GO_SSL_PTR ssl, char *selected_proto, int *sele
     GO_OPENSSL_DEBUGLOG(trace, "[INFO] go_openssl_check_alpn_status succeeded!\n");
     return 0;
 }
+
+typedef struct
+{
+    char *data;
+    size_t size;
+} param_info_st;
+
+int go_openssl_get_provider_params(GO_OSSL_PROVIDER_PTR provider, param_info_st *info)
+{
+    int ret = 1;
+    char *name = NULL;
+    char *version = NULL;
+    char *buildinfo = NULL;
+
+    GO_OSSL_PARAM request[] = {
+        {GO_OSSL_PROV_PARAM_NAME, GO_OSSL_PARAM_UTF8_PTR, &name, 0, 0},
+        {GO_OSSL_PROV_PARAM_VERSION, GO_OSSL_PARAM_UTF8_PTR, &version, 0, 0},
+        {GO_OSSL_PROV_PARAM_BUILDINFO, GO_OSSL_PARAM_UTF8_PTR, &buildinfo, 0, 0},
+        {NULL, 0, NULL, 0, 0},
+    };
+
+    if (go_openssl_OSSL_PROVIDER_get_params(provider, request) <= 0)
+    {
+        snprintf(info->data, info->size, "Failed to get provider parameters");
+        return ret;
+    }
+
+    snprintf(info->data, info->size,
+             "%s, version: %s, build info: %s",
+             name ? name : "(null)",
+             version ? version : "(null)",
+             buildinfo ? buildinfo : "(null)");
+
+    return !ret;
+}
+
+int go_openssl_get_fips_provider_info(char *buf, size_t size)
+{
+    int ret = 1;
+    if (!buf || size == 0)
+    {
+        return ret;
+    }
+    memset(buf, 0, sizeof(size));
+
+    GO_OSSL_PROVIDER_PTR provider = go_openssl_OSSL_PROVIDER_try_load(NULL, GO_OSSL_PROV_FIPS_PREDEFINED_NAME, 1);
+    if (!provider)
+    {
+        snprintf(buf, size, "FIPS provider not available");
+        return ret;
+    }
+
+    param_info_st info = {buf, size};
+    ret = go_openssl_get_provider_params(provider, &info);
+    go_openssl_OSSL_PROVIDER_unload(provider);
+    return ret;
+}

@@ -4,6 +4,49 @@ package libssl
 #include "golibssl.h"
 */
 import "C"
+import "unsafe"
+
+// cString is a null-terminated string,
+// akin to C's char*.
+type cString string
+
+// str returns the string value.
+func (s cString) str() string {
+	return string(s)
+}
+
+// ptr returns a pointer to the string data.
+// It panics if the string is not null-terminated.
+//
+// The memory pointed to by the returned pointer should
+// not be modified and it must only be passed to
+// "const char*" parameters. Any attempt to modify it
+// will result in a runtime panic, as Go strings are
+// allocated in read-only memory.
+func (s cString) ptr() *byte {
+	if len(s) == 0 {
+		return nil
+	}
+	if s[len(s)-1] != 0 {
+		panic("must be null-terminated")
+	}
+	return unsafe.StringData(string(s))
+}
+
+const ( //checkheader:ignore
+	// Provider names
+	_ProviderNameFips    cString = "fips\x00"
+	_ProviderNameDefault cString = "default\x00"
+	_ProviderNameBase    cString = "base\x00"
+
+	// Property strings
+	_PropFIPSYes cString = "fips=yes\x00"
+	_PropFIPSNo  cString = "-fips\x00"
+
+	// Digest Names
+	_DigestNameSHA2_256 cString = "SHA2-256\x00"
+	_DigestNameMD5      cString = "MD5\x00"
+)
 
 // OpenSSL initialization options
 const (

@@ -223,9 +223,37 @@ enum
     GO_OPENSSL_NPN_NO_OVERLAP = 2,
 };
 
+// OSSL_PARAM
+// Define ossl_param_st from:
+// https://github.com/openssl/openssl/blob/5db7b99/include/openssl/core.h#L79
+// since we need the define the concrete struct in order to get parameter info
+/*
+ * Type to pass object data in a uniform way, without exposing the object
+ * structure.
+ *
+ * An array of these is always terminated by key == NULL
+ */
+struct go_ossl_param_st
+{
+    const char *key;        /* the name of the parameter */
+    unsigned int data_type; /* declare what kind of content is in buffer */
+    void *data;             /* value being passed in or out */
+    size_t data_size;       /* data size */
+    size_t return_size;     /* returned content size */
+};
+
+typedef struct go_ossl_param_st GO_OSSL_PARAM;
+#define GO_OSSL_PARAM_UTF8_PTR 6
+#define GO_OSSL_PROV_PARAM_NAME "name"
+#define GO_OSSL_PROV_PARAM_VERSION "version"
+#define GO_OSSL_PROV_PARAM_BUILDINFO "buildinfo"
+#define GO_OSSL_PROV_FIPS_PREDEFINED_NAME "fips"
+
 typedef void *GO_OPENSSL_INIT_SETTINGS_PTR;
 typedef void *GO_OSSL_LIB_CTX_PTR;
 typedef void *GO_OSSL_PROVIDER_PTR;
+typedef void *GO_OSSL_PARAM_PTR;
+typedef void *GO_EVP_MD_PTR;
 typedef void *GO_SSL_verify_cb_PTR;
 typedef void *GO_CRYPTO_THREADID_PTR;
 typedef void *GO_X509_VERIFY_PARAM_PTR;
@@ -294,7 +322,14 @@ typedef void *GO_BIO_METHOD_PTR;
     DEFINEFUNC_3_0(int, EVP_default_properties_is_fips_enabled, (GO_OSSL_LIB_CTX_PTR libctx), (libctx))                                                                                                                                                     \
     DEFINEFUNC_3_0(int, EVP_default_properties_enable_fips, (GO_OSSL_LIB_CTX_PTR libctx, int enable), (libctx, enable))                                                                                                                                     \
     DEFINEFUNC_3_0(int, OSSL_PROVIDER_available, (GO_OSSL_LIB_CTX_PTR libctx, const char *name), (libctx, name))                                                                                                                                            \
+    DEFINEFUNC_3_0(GO_EVP_MD_PTR, EVP_MD_fetch, (GO_OSSL_LIB_CTX_PTR libctx, const char *algorithm, const char *props), (libctx, algorithm, props))                                                                                                         \
+    DEFINEFUNC_1_1(GO_EVP_MD_PTR, EVP_md5, (void), ())                                                                                                                                                                                                      \
+    DEFINEFUNC_3_0(void, EVP_MD_free, (GO_EVP_MD_PTR md), (md))                                                                                                                                                                                             \
+    DEFINEFUNC_3_0(GO_OSSL_PROVIDER_PTR, EVP_MD_get0_provider, (GO_EVP_MD_PTR md), (md))                                                                                                                                                                    \
+    DEFINEFUNC_3_0(GO_OSSL_PROVIDER_PTR, OSSL_PROVIDER_try_load, (GO_OSSL_LIB_CTX_PTR libctx, const char *name, int retain_fallbacks), (libctx, name, retain_fallbacks))                                                                                    \
     DEFINEFUNC_3_0(GO_OSSL_PROVIDER_PTR, OSSL_PROVIDER_load, (GO_OSSL_LIB_CTX_PTR libctx, const char *name), (libctx, name))                                                                                                                                \
+    DEFINEFUNC_3_0(int, OSSL_PROVIDER_unload, (GO_OSSL_PROVIDER_PTR prov), (prov))                                                                                                                                                                          \
+    DEFINEFUNC_3_0(int, OSSL_PROVIDER_get_params, (GO_OSSL_PROVIDER_PTR prov, GO_OSSL_PARAM_PTR params), (prov, params))                                                                                                                                    \
     /* Support for SSLv2 and the corresponding SSLv2_method(), SSLv2_server_method() */                                                                                                                                                                     \
     /* and SSLv2_client_method() functions where removed in OpenSSL 1.1.0. */                                                                                                                                                                               \
     /* SSLv23_method(), SSLv23_server_method() and SSLv23_client_method() were */                                                                                                                                                                           \

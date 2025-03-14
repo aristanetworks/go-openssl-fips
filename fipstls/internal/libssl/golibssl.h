@@ -45,3 +45,4 @@ int go_openssl_ssl_configure(GO_SSL_PTR ssl, const char *hostname, int trace);
 int go_openssl_ssl_configure_bio(GO_SSL_PTR ssl, GO_BIO_PTR bio, const char *hostname, int trace);
 int go_openssl_set_h2_alpn(GO_SSL_CTX_PTR ctx, int trace);
 int go_openssl_check_alpn_status(GO_SSL_PTR ssl, char *selected_proto, int *selected_len, int trace);
+int go_openssl_get_fips_provider_info(char *buf, size_t size);
