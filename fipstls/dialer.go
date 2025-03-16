@@ -132,7 +132,8 @@ type dialResult struct {
 }
 
 func (d *Dialer) dial(ctx context.Context, addr string) (net.Conn, error) {
-	d.Logger.Log(LevelInfo, "Dialing with FIPS Mode = %v, Version = %s", FIPSMode(), Version())
+	d.Logger.Log(LevelInfo, "Dialing with FIPS Mode = %v, Version = %s, ProviderInfo = %s",
+		FIPSMode(), Version(), ProviderInfo())
 	bio, err := d.dialBIO(ctx, d.Network, addr)
 	if err != nil {
 		bio.Close()
