@@ -251,7 +251,7 @@ func TestGrpcDial(t *testing.T) {
 	t.Logf("Server listening on: %s", addr)
 
 	t.Log("Creating new DialFn")
-	dialFn := fipstls.NewDialContext(&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
+	dialFn := fipstls.NewDialContext(&fipstls.Config{CaFile: testutils.CertPath},
 		getDialOpts()...)
 
 	t.Log("Attempting raw connection...")
@@ -684,7 +684,7 @@ func BenchmarkGrpcBidiStream(b *testing.B) {
 }
 
 func newTestServer(b testing.TB) (net.Listener, func()) {
-	cert, err := tls.LoadX509KeyPair("./internal/testutils/certs/cert.pem",
+	cert, err := tls.LoadX509KeyPair(testutils.CertPath,
 		"./internal/testutils/certs/key.pem")
 	if err != nil {
 		b.Fatalf("failed to load test certs: %v", err)
@@ -733,7 +733,7 @@ func newClientOpts(b testing.TB) []grpc.DialOption {
 	} else {
 		b.Log("Running tests with fipstls.Dialer")
 		dialFn := fipstls.NewDialContext(
-			&fipstls.Config{CaFile: "./internal/testutils/certs/cert.pem"},
+			&fipstls.Config{CaFile: testutils.CertPath},
 			getDialOpts()...)
 		clientOpts = []grpc.DialOption{
 			grpc.WithContextDialer(dialFn),

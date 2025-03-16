@@ -25,14 +25,15 @@ type TestServer struct {
 	CaFile string
 }
 
+const CertPath = "internal/testutils/certs/cert.pem"
+
 var (
 	//go:embed certs/cert.pem
 	certBytes []byte
 
 	//go:embed certs/key.pem
-	keyBytes []byte
-
-	caFile, _ = filepath.Abs("internal/testutils/certs/cert.pem")
+	keyBytes  []byte
+	caFile, _ = filepath.Abs(CertPath)
 
 	// Certificate parsing is done once at init
 	serverCert tls.Certificate
