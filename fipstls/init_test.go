@@ -34,8 +34,8 @@ func TestInitFailure(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			libssl.Reset()
 			err := fipstls.Init(tc.version)
+			defer libssl.Reset()
 			if tc.expErr && !errors.Is(err, fipstls.ErrLoadLibSslFailed) {
 				t.Fatalf("Expected err %v, got err %v", fipstls.ErrLoadLibSslFailed, err)
 			}
@@ -53,6 +53,8 @@ func TestInitFIPSMode(t *testing.T) {
 	if !*runInitTest {
 		t.Skip("Skipping... to run this, use '-inittest'")
 	}
+	initTest(t)
+	defer libssl.Reset()
 	if !fipstls.FIPSMode() {
 		if err := fipstls.SetFIPS(true); err != nil {
 			if !libssl.FIPSCapable() {
@@ -63,5 +65,7 @@ func TestInitFIPSMode(t *testing.T) {
 		if !fipstls.FIPSMode() {
 			t.Fatal("FIPSMode() expected to return true, got false")
 		}
+	} else {
+		t.Log("FIPS mode is already enabled")
 	}
 }

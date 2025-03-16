@@ -124,8 +124,9 @@ func FIPS() bool {
 		// Check if the default properties contain `fips=1`.
 		if C.go_openssl_EVP_default_properties_is_fips_enabled(nil) != 1 {
 			// Note that it is still possible that the provider used by default is FIPS-compliant,
-			// but that wouldn't be a system or user requirement.
-			return false
+			// so check if the MD5 algorithm is unavailable & SHA-256 is available for the case
+			// where the default provider is FIPS-compliant.
+			return proveNoMd5("") && proveSHA256("")
 		}
 		// Check if the SHA-256 algorithm is available. If it is, then we can be sure that there is a provider available that matches
 		// the `fips=1` query. Most notably, this works for the common case of using the built-in FIPS provider.
@@ -259,6 +260,12 @@ func sha256Provider(props cString) C.GO_OSSL_PROVIDER_PTR {
 	return C.go_openssl_EVP_MD_get0_provider(md)
 }
 
+// proveSHA256 checks if the SHA-256 algorithm is available
+// using the given properties.
+func proveSHA256(props cString) bool {
+	return sha256Provider(props) != nil
+}
+
 // md5Provider returns the provider for the MD5 algorithm
 // using the given properties.
 func md5Provider(props cString) (C.GO_OSSL_PROVIDER_PTR, error) {
@@ -272,10 +279,14 @@ func md5Provider(props cString) (C.GO_OSSL_PROVIDER_PTR, error) {
 	return C.go_openssl_EVP_MD_get0_provider(md), nil
 }
 
-// proveSHA256 checks if the SHA-256 algorithm is available
+// proveNoMd5 checks if the MD5 algorithm is unavailable
 // using the given properties.
-func proveSHA256(props cString) bool {
-	return sha256Provider(props) != nil
+func proveNoMd5(props cString) bool {
+	prov, err := md5Provider(props)
+	if err != nil {
+		return true
+	}
+	return prov == nil
 }
 
 // noescape hides a pointer from escape analysis. noescape is
