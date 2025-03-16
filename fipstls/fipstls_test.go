@@ -12,7 +12,7 @@ import (
 var (
 	useNetDial         = flag.Bool("netdial", false, "Use default net.Dialer")
 	runStressTest      = flag.Bool("stresstest", false, "Run bidistream stress test")
-	runFallbackTest    = flag.Bool("fallbacktest", false, "Run init fallback test")
+	runInitTest        = flag.Bool("inittest", false, "Run init fallback test")
 	enableClientTrace  = flag.Bool("traceclient", false, "Enable client connection tracing")
 	enableServerTrace  = flag.Bool("traceserver", false, "Enable server connection tracing")
 	enableProgRecorder = flag.Bool("tracegrpc", false, "Enable progress recorder output")

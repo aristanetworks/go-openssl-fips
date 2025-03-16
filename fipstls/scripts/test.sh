@@ -13,7 +13,7 @@ case "$1" in
     echo "Running main unit tests..."
     go test $TEST_FLAGS -traceclient ./...
     go test $TEST_FLAGS -stresstest -run TestGrpcBidiStress ./...
-    go test -v -count=1 -fallbacktest -run TestInitFailure .
+    go test -v -count=1 -inittest -run TestInit .
     break
     ;;
 -a | -asan)
