@@ -2,68 +2,63 @@ package fipstls
 
 import (
 	"fmt"
-	"io"
-	"log"
 )
 
-// Log verbosity levels
+// LogLevel is used for setting log verbosity levels
+type LogLevel int
+
 const (
-	LevelError = iota
-	LevelInfo
-	LevelDebug
+	LogLevelErr LogLevel = iota
+	LogLevelInfo
+	LogLevelDebug
 )
 
-// Logger is the interface that wraps basic logging methods.
+// Logger is an interface used for logging at different verbosity levels.
 type Logger interface {
-	Log(level int, format string, args ...interface{})
-	WithPrefix(prefix string) Logger
+	Logf(level LogLevel, format string, args ...any)
+	Wrap(prefix string) Logger
 }
 
 // noopLogger is a logger implementation that does nothing.
 type noopLogger struct{}
 
-func (l noopLogger) Log(level int, format string, args ...interface{}) {}
-func (l noopLogger) WithPrefix(prefix string) Logger                   { return l }
+func (l noopLogger) Wrap(string) Logger            { return l }
+func (l noopLogger) Logf(LogLevel, string, ...any) {}
 
-// defaultLogger implements Logger using the standard library.
-type defaultLogger struct {
-	logger *log.Logger
-	level  int // Maximum level to log
-	prefix string
+// DefaultLogger is an implementation of the [Logger] interface that allows
+// callers to hook in external logging functions.
+type DefaultLogger struct {
+	Prefix     string
+	Level      LogLevel
+	LoggerFunc func(format string, args ...any)
 }
 
-func newDefaultLogger(level int, w io.Writer, prefix string) *defaultLogger {
-	return &defaultLogger{
-		logger: log.New(w, "", log.LstdFlags),
-		level:  level,
-		prefix: prefix,
+// Wrap will create a new logger with the prefix appended.
+func (l *DefaultLogger) Wrap(prefix string) Logger {
+	return &DefaultLogger{
+		Prefix:     l.Prefix + prefix,
+		Level:      l.Level,
+		LoggerFunc: l.LoggerFunc,
 	}
 }
 
-// Log will log the message depending on the verbosity level of LevelError = 0, LevelInfo = 1, or
-// LevelDebug = 2.
-func (l *defaultLogger) Log(level int, format string, args ...interface{}) {
-	if level > l.level {
+// Logf is used for logging at the specified [LogLevel]. This method can be
+// overridden by setting [DefaultLogger.LoggerFunc].
+func (l *DefaultLogger) Logf(level LogLevel, format string, args ...any) {
+	if level > l.Level {
 		return
 	}
 
 	var levelStr string
 	switch level {
-	case LevelDebug:
-		levelStr = "DEBUG"
-	case LevelInfo:
-		levelStr = "INFO"
-	case LevelError:
-		levelStr = "ERROR"
+	case LogLevelDebug:
+		levelStr = "DEBUG:"
+	case LogLevelInfo:
+		levelStr = "INFO:"
+	case LogLevelErr:
+		levelStr = "ERROR:"
 	}
 
 	msg := fmt.Sprintf(format, args...)
-	l.logger.Printf("%s: %s %s", levelStr, l.prefix, msg)
-}
-
-// WithPrefix appends the new prefix to the current prefix.
-func (l *defaultLogger) WithPrefix(prefix string) Logger {
-	newLogger := *l
-	newLogger.prefix = l.prefix + prefix
-	return &newLogger
+	l.LoggerFunc("%-6s %s %s", levelStr, l.Prefix, msg)
 }

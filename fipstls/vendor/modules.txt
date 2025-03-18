@@ -1,3 +1,6 @@
+# github.com/aristanetworks/glog v0.0.0-20250312002449-1e63d96ef38d
+## explicit; go 1.17
+github.com/aristanetworks/glog
 # golang.org/x/net v0.30.0
 ## explicit; go 1.18
 golang.org/x/net/http/httpguts
@@ -16,6 +19,9 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
+# golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
+## explicit
+golang.org/x/time/rate
 # google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/rpc/status

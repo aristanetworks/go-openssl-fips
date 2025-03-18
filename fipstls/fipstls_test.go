@@ -13,6 +13,7 @@ var (
 	useNetDial         = flag.Bool("netdial", false, "Use default net.Dialer")
 	runStressTest      = flag.Bool("stresstest", false, "Run bidistream stress test")
 	runInitTest        = flag.Bool("inittest", false, "Run init fallback test")
+	enableFips         = flag.Bool("fips", false, "Enable FIPS with SetFIPS before running any tests")
 	enableClientTrace  = flag.Bool("traceclient", false, "Enable client connection tracing")
 	enableServerTrace  = flag.Bool("traceserver", false, "Enable server connection tracing")
 	enableProgRecorder = flag.Bool("tracegrpc", false, "Enable progress recorder output")
@@ -28,6 +29,11 @@ func initTest(t *testing.T) {
 	if err := fipstls.Init(""); err != nil {
 		t.Fatalf("failed to load libssl: %v", err)
 	}
+	if *enableFips {
+		if err := fipstls.SetFIPS(true); err != nil {
+			t.Fatalf("SetFIPS(true) err = %v", err)
+		}
+	}
 	if *enableCgoTrace {
 		libssl.EnableDebugLogging()
 	}
@@ -36,7 +42,7 @@ func initTest(t *testing.T) {
 func getDialOpts() []fipstls.DialOption {
 	o := []fipstls.DialOption{}
 	if *enableClientTrace {
-		o = append(o, fipstls.WithLogging(fipstls.LevelInfo, os.Stderr))
+		o = append(o, fipstls.WithLogging("", fipstls.LogLevelInfo, os.Stderr))
 	}
 	return o
 }

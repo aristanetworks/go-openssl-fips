@@ -63,26 +63,23 @@ type connLogger struct {
 
 func newConnLogger(l Logger, bio string) Logger {
 	return &connLogger{
-		Logger: l.WithPrefix(connLogPrefix),
+		Logger: l.Wrap(connLogPrefix),
 		bio:    bio,
 	}
 }
 
-func (c *connLogger) Log(level int, format string, args ...interface{}) {
+func (c *connLogger) Logf(level LogLevel, format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fullMsg := fmt.Sprintf(
 		"%-40s %s",
 		msg,
 		c.bio,
 	)
-	c.Logger.Log(level, "%s", fullMsg)
+	c.Logger.Logf(level, "%s", fullMsg)
 }
 
-func (c *connLogger) WithPrefix(prefix string) Logger {
-	return &connLogger{
-		Logger: c.Logger.WithPrefix(prefix),
-		bio:    c.bio,
-	}
+func (c *connLogger) Wrap(prefix string) Logger {
+	return c.Logger.Wrap(prefix)
 }
 
 // NewConn creates a TLS [Conn] from a [Context] and [BIO].
@@ -107,7 +104,7 @@ func NewConn(ctx *Context, bio *BIO, tls *Config, l Logger) (*Conn, error) {
 		return nil, err
 	}
 	c.closer = newOnceCloser(func() error {
-		c.l.Log(LevelDebug, "Closer.close called")
+		c.l.Logf(LogLevelDebug, "Closer.close called")
 		libssl.SSLFree(c.ssl)
 		return ctx.closer.Close()
 	})
@@ -125,7 +122,7 @@ func (c *Conn) configureBIO() error {
 		hostname = c.bio.Hostname()
 	}
 	if err := libssl.SSLConfigureBIO(c.ssl, c.bio.BIO(), hostname); err != nil {
-		c.l.Log(LevelError, "Failed to configure BIO: %v", err)
+		c.l.Logf(LogLevelErr, "Failed to configure BIO: %v", err)
 		return err
 	}
 	return nil
@@ -138,12 +135,12 @@ func (c *Conn) connect() error {
 
 // Handshake initiates a TLS handshake with the peer.
 func (c *Conn) Handshake(deadline time.Time) error {
-	c.l.Log(LevelDebug, "Handshake begin")
-	defer c.l.Log(LevelDebug, "Handshake end")
+	c.l.Logf(LogLevelDebug, "Handshake begin")
+	defer c.l.Logf(LogLevelDebug, "Handshake end")
 	c.handshakeDeadline.Store(deadline)
 	_, err := c.doIO(nil, func(b []byte) (int, error) { return 0, c.connect() }, opHandshake)
 	if err != nil {
-		c.l.Log(LevelDebug, "Post-Handshake negotiated protocols: %v", libssl.SSLStatusALPN(c.ssl))
+		c.l.Logf(LogLevelDebug, "Post-Handshake negotiated protocols: %v", libssl.SSLStatusALPN(c.ssl))
 	}
 	return err
 }
@@ -174,8 +171,8 @@ func (c *Conn) read(b []byte) (int, error) {
 
 // Read will read bytes into the buffer from the [Conn] connection, wrapped in an optional deadline.
 func (c *Conn) Read(b []byte) (int, error) {
-	c.l.Log(LevelDebug, "Read begin")
-	defer c.l.Log(LevelDebug, "Read end")
+	c.l.Logf(LogLevelDebug, "Read begin")
+	defer c.l.Logf(LogLevelDebug, "Read end")
 	c.in.Lock()
 	defer c.in.Unlock()
 	if c.closed.Load() {
@@ -200,11 +197,11 @@ var ErrShutdown = errors.New("fipstls: protocol is shutdown")
 
 // Write will write bytes from the buffer to the [Conn] connection, wrapped in an optional deadline.
 func (c *Conn) Write(b []byte) (int, error) {
-	c.l.Log(LevelDebug, "Write begin")
-	defer c.l.Log(LevelDebug, "Write end")
+	c.l.Logf(LogLevelDebug, "Write begin")
+	defer c.l.Logf(LogLevelDebug, "Write end")
 	// interlock with Close below
 	for {
-		c.l.Log(LevelDebug, "Write waiting...")
+		c.l.Logf(LogLevelDebug, "Write waiting...")
 		x := c.activeCall.Load()
 		if x&1 != 0 {
 			return 0, net.ErrClosed
@@ -214,7 +211,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 		}
 	}
 	defer c.activeCall.Add(-2)
-	c.l.Log(LevelDebug, "Write grabbed lock")
+	c.l.Logf(LogLevelDebug, "Write grabbed lock")
 	c.out.Lock()
 	defer c.out.Unlock()
 	if c.closeNotifySent {
@@ -237,25 +234,25 @@ func (c *Conn) shutdown() error {
 // Close will attempt to cleanly shutdown the [Conn] connection and free [Conn] and optionally
 // [Context] resources if a non-empty context was provided.
 func (c *Conn) Close() error {
-	c.l.Log(LevelDebug, "Close begin")
-	defer c.l.Log(LevelDebug, "Close end")
+	c.l.Logf(LogLevelDebug, "Close begin")
+	defer c.l.Logf(LogLevelDebug, "Close end")
 	var x int32
 	for {
-		c.l.Log(LevelDebug, "Close waiting...")
+		c.l.Logf(LogLevelDebug, "Close waiting...")
 		x = c.activeCall.Load()
 		if x&1 != 0 {
 			if c.closed.Load() {
-				c.l.Log(LevelDebug, "Close connection is closed, returning: %v", c.closeErr)
+				c.l.Logf(LogLevelDebug, "Close connection is closed, returning: %v", c.closeErr)
 				return c.closeErr
 			}
-			c.l.Log(LevelDebug, "Close connection is not closed, returning: %v", net.ErrClosed)
+			c.l.Logf(LogLevelDebug, "Close connection is not closed, returning: %v", net.ErrClosed)
 			return net.ErrClosed
 		}
 		if c.activeCall.CompareAndSwap(x, x|1) {
 			break
 		}
 	}
-	c.l.Log(LevelDebug, "Close grabbed lock")
+	c.l.Logf(LogLevelDebug, "Close grabbed lock")
 	if x != 0 {
 		// io.Writer and io.Closer should not be used concurrently.
 		// If Close is called while a Write is currently in-flight,
@@ -263,7 +260,7 @@ func (c *Conn) Close() error {
 		// being used to break the Write and/or clean up resources and
 		// avoid sending the alertCloseNotify, which may block
 		// waiting on handshakeMutex or the c.out mutex.
-		c.l.Log(LevelDebug, "Force closing to handle Close-during-Write")
+		c.l.Logf(LogLevelDebug, "Force closing to handle Close-during-Write")
 		if c.closed.Load() {
 			return c.closeErr
 		}
@@ -278,8 +275,8 @@ func (c *Conn) Close() error {
 // closeNotify closes the Write side of the connection by sending a close notify shutdown alert
 // message to the peer.
 func (c *Conn) closeNotify() error {
-	c.l.Log(LevelDebug, "Close-notify begin")
-	defer c.l.Log(LevelDebug, "Close-notify end")
+	c.l.Logf(LogLevelDebug, "Close-notify begin")
+	defer c.l.Logf(LogLevelDebug, "Close-notify end")
 	c.out.Lock()
 	defer c.out.Unlock()
 	if !c.closeNotifySent && !c.closed.Load() {
@@ -287,7 +284,7 @@ func (c *Conn) closeNotify() error {
 		c.SetWriteDeadline(time.Now().Add(time.Second * 5))
 		_, c.closeErr = c.doIO(nil, func(b []byte) (int, error) { return 0, c.shutdown() },
 			opShutdown)
-		c.l.Log(LevelDebug, "Close error: %v", c.closeErr)
+		c.l.Logf(LogLevelDebug, "Close error: %v", c.closeErr)
 		defer c.closer.Done()
 		defer c.closer.Close()
 		c.closeNotifySent = true
@@ -325,7 +322,7 @@ func (t *atomicTime) Load() time.Time {
 // and any currently-blocked [SSL.Read] call.
 // A zero value for t means Read will not time out.
 func (c *Conn) SetReadDeadline(t time.Time) error {
-	c.l.Log(LevelDebug, "New rdeadline")
+	c.l.Logf(LogLevelDebug, "New rdeadline")
 	c.readDeadline.Store(t)
 	return nil
 }
@@ -336,7 +333,7 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 // some of the data was successfully written.
 // A zero value for t means Write will not time out.
 func (c *Conn) SetWriteDeadline(t time.Time) error {
-	c.l.Log(LevelDebug, "New wdeadline")
+	c.l.Logf(LogLevelDebug, "New wdeadline")
 	c.writeDeadline.Store(t)
 	return nil
 }
@@ -355,27 +352,27 @@ type retryResult struct {
 
 // retryable processes SSL errors and determines whether to retry operations
 func (c *Conn) retryable(err error, kind string) retryResult {
-	c.l.Log(LevelDebug, "Got %v error", kind)
+	c.l.Logf(LogLevelDebug, "Got %v error", kind)
 	if err == nil {
 		return retryResult{false, nil, 0}
 	}
 
 	// Handle SSL-specific errors
-	c.l.Log(LevelDebug, "%v non-blocking got %v", kind, libssl.NewOpenSSLError(""))
+	c.l.Logf(LogLevelDebug, "%v non-blocking got %v", kind, libssl.NewOpenSSLError(""))
 	if sslErr, ok := err.(*libssl.SSLError); ok {
 		switch sslErr.Code {
 		case libssl.SSL_ERROR_WANT_READ, libssl.SSL_ERROR_WANT_WRITE:
-			c.l.Log(LevelDebug, "%v non-blocking wants read/write", kind)
+			c.l.Logf(LogLevelDebug, "%v non-blocking wants read/write", kind)
 			return retryResult{true, nil, time.Millisecond}
 
 		case libssl.SSL_ERROR_ZERO_RETURN:
-			c.l.Log(LevelDebug, "%v non-blocking return zero", kind)
+			c.l.Logf(LogLevelDebug, "%v non-blocking return zero", kind)
 			return retryResult{false, io.EOF, 0}
 
 		case libssl.SSL_ERROR_SSL:
 			switch kind {
 			case opShutdown:
-				c.l.Log(LevelDebug, "%s non-blocking forced closed", kind)
+				c.l.Logf(LogLevelDebug, "%s non-blocking forced closed", kind)
 				return retryResult{false, nil, 0}
 			case opHandshake:
 				// Check verification error first
@@ -399,12 +396,12 @@ func (c *Conn) retryable(err error, kind string) retryResult {
 			errno, sockErr := syscall.GetsockoptInt(c.bio.FD(), syscall.SOL_SOCKET,
 				syscall.SO_ERROR)
 			if sockErr != nil {
-				c.l.Log(LevelDebug, "%s failed, could not get errno: %v", kind, errno)
+				c.l.Logf(LogLevelDebug, "%s failed, could not get errno: %v", kind, errno)
 				return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), sockErr), 0}
 			}
 
 			if errno != 0 {
-				c.l.Log(LevelDebug, "%s failed, errno: %v openssl error: %s", kind, errno,
+				c.l.Logf(LogLevelDebug, "%s failed, errno: %v openssl error: %s", kind, errno,
 					libssl.NewOpenSSLError(""))
 				return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), err), 0}
 			}
@@ -425,7 +422,7 @@ func (c *Conn) retryable(err error, kind string) retryResult {
 	}
 
 	// Default error handling for non-SSL errors or unhandled SSL errors
-	c.l.Log(LevelDebug, "%v error: %v", kind, err)
+	c.l.Logf(LogLevelDebug, "%v error: %v", kind, err)
 	return retryResult{false, newConnError(kind, c.bio.RemoteAddr(), err), 0}
 }
 
@@ -468,8 +465,8 @@ func (c *Conn) ioLoop(b []byte, op func([]byte) (int, error), kind string, done 
 }
 
 func (c *Conn) doIO(b []byte, op func([]byte) (int, error), kind string) (int, error) {
-	c.l.Log(LevelDebug, "%v non-blocking begin", kind)
-	defer c.l.Log(LevelDebug, "%v non-blocking end", kind)
+	c.l.Logf(LogLevelDebug, "%v non-blocking begin", kind)
+	defer c.l.Logf(LogLevelDebug, "%v non-blocking end", kind)
 
 	done := make(chan struct{})
 	outCh := make(chan ioResult, 1)

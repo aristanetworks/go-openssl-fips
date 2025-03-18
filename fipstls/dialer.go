@@ -3,6 +3,7 @@ package fipstls
 import (
 	"context"
 	"io"
+	"log"
 	"net"
 	"time"
 )
@@ -40,7 +41,7 @@ type Dialer struct {
 	// Network is one of "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), or "unix".
 	Network string
 
-	// Logger is a simple logging implementation used to log at 3 verbosity levels:
+	// Logger will be used to print logs at 3 verbosity levels:
 	// [LevelError], [LevelInfo], and [LevelDebug].
 	Logger Logger
 }
@@ -69,24 +70,24 @@ func WithNetwork(network string) DialOption {
 	}
 }
 
-// WithLogger enables logging with a custom logger.
-func WithLogger(logger Logger) DialOption {
+// WithLogging enables logging with the specified level and prefix and will write
+// logs by calling the stdlib logging [log.Logger.Printf].
+func WithLogging(prefix string, level LogLevel, w io.Writer) DialOption {
 	return func(d *Dialer) {
-		d.Logger = logger
+		d.Logger = &DefaultLogger{
+			Prefix:     prefix + dialLogPrefix,
+			Level:      level,
+			LoggerFunc: log.New(w, "", log.LstdFlags).Printf,
+		}
 	}
 }
 
-// WithLogging enables logging with the specified level and output writer.
-func WithLogging(level int, w io.Writer) DialOption {
+// WithLoggerFunc enables logging with the [Logger] interface. The
+// [DefaultLogger.LoggerFunc] can be overridden in order to write to external
+// logging package functions, like glog.Info.
+func WithLogger(l Logger) DialOption {
 	return func(d *Dialer) {
-		d.Logger = newDefaultLogger(level, w, dialLogPrefix)
-	}
-}
-
-// WithLogPrefix sets a prefix for all logs.
-func WithLogPrefix(prefix string) DialOption {
-	return func(d *Dialer) {
-		d.Logger = d.Logger.WithPrefix(prefix)
+		d.Logger = l
 	}
 }
 
@@ -111,6 +112,9 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 	if d.Network == "" {
 		d.Network = DefaultNetwork
 	}
+	if d.Logger == nil {
+		d.Logger = noopLogger{}
+	}
 	return d.dial(ctx, addr)
 }
 
@@ -132,7 +136,7 @@ type dialResult struct {
 }
 
 func (d *Dialer) dial(ctx context.Context, addr string) (net.Conn, error) {
-	d.Logger.Log(LevelInfo, "Dialing with FIPS Mode = %v, Version = %s, ProviderInfo = %s",
+	d.Logger.Logf(LogLevelInfo, "Dialing with FIPS Mode = %v, Version = %s, ProviderInfo = %s",
 		FIPSMode(), Version(), ProviderInfo())
 	bio, err := d.dialBIO(ctx, d.Network, addr)
 	if err != nil {
@@ -143,8 +147,8 @@ func (d *Dialer) dial(ctx context.Context, addr string) (net.Conn, error) {
 }
 
 func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error) {
-	d.Logger.Log(LevelInfo, "Dialing '%s:%s' begin", network, addr)
-	defer d.Logger.Log(LevelInfo, "Dialing '%s:%s' end", network, addr)
+	d.Logger.Logf(LogLevelInfo, "Dialing '%s:%s' begin", network, addr)
+	defer d.Logger.Logf(LogLevelInfo, "Dialing '%s:%s' end", network, addr)
 	deadline := d.deadline(ctx, time.Now())
 	if !deadline.IsZero() {
 		if d, ok := ctx.Deadline(); !ok || deadline.Before(d) {
@@ -164,7 +168,7 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 		return &BIO{closer: noopCloser{}}, ctx.Err()
 	case b := <-ch:
 		if b.err != nil {
-			d.Logger.Log(LevelError, "Creating BIO failed: %v", b.err)
+			d.Logger.Logf(LogLevelErr, "Creating BIO failed: %v", b.err)
 			return b.bio, b.err
 		}
 		return b.bio, nil
@@ -172,21 +176,21 @@ func (d *Dialer) dialBIO(ctx context.Context, network, addr string) (*BIO, error
 }
 
 func (d *Dialer) newConn(bio *BIO) (net.Conn, error) {
-	d.Logger.Log(LevelInfo, "New connection: %s", bio)
+	d.Logger.Logf(LogLevelInfo, "New connection: %s", bio)
 	ctx, err := NewCtx(d.TLS)
 	if err != nil {
-		d.Logger.Log(LevelError, "Creating context failed: %v", err)
+		d.Logger.Logf(LogLevelErr, "Creating context failed: %v", err)
 		ctx.Close()
 		return nil, err
 	}
 	conn, err := NewConn(ctx, bio, d.TLS, d.Logger)
 	if err != nil {
-		d.Logger.Log(LevelError, "Creating connection failed: %v", err)
+		d.Logger.Logf(LogLevelErr, "Creating connection failed: %v", err)
 		conn.Close()
 		return nil, err
 	}
 	if err := conn.Handshake(d.Deadline); err != nil {
-		d.Logger.Log(LevelError, "Handshake failed: %v", err)
+		d.Logger.Logf(LogLevelErr, "Handshake failed: %v", err)
 		conn.Close()
 		return nil, err
 	}
