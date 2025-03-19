@@ -2,6 +2,7 @@ package fipstls_test
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/aristanetworks/glog"
 	"github.com/aristanetworks/go-openssl-fips/fipstls"
+	"github.com/aristanetworks/go-openssl-fips/fipstls/internal/testutils"
 )
 
 // captureOutput is a helper to capture log output
@@ -230,6 +232,41 @@ func TestGlogWithLevel(t *testing.T) {
 	}
 
 	if !strings.Contains(output, "INFO:") || !strings.Contains(output, "Important information") {
+		t.Errorf("Glog info level message missing: %s", output)
+	}
+}
+
+func TestGlogGrpcDial(t *testing.T) {
+	initTest(t)
+	defer testutils.LeakCheck(t)
+	lis, cleanupSrv := testutils.NewGrpcTestServer(t)
+	defer cleanupSrv()
+
+	addr := lis.Addr().String()
+	t.Logf("Server listening on: %s", addr)
+
+	t.Log("Creating new DialFn")
+	logger := &fipstls.DefaultLogger{
+		Prefix:     "GLOG:",
+		Level:      fipstls.LogLevelInfo,
+		LoggerFunc: glog.Infof,
+	}
+	dialFn := fipstls.NewDialContext(&fipstls.Config{CaFile: testutils.CertPath},
+		fipstls.WithLogger(logger))
+
+	output := captureOutput(func() {
+		rawConn, err := dialFn(context.Background(), addr)
+		if err != nil {
+			t.Fatalf("Direct dial failed: %v", err)
+		}
+		rawConn.Close()
+		glog.Flush()
+	})
+
+	t.Logf("Captured output: %s", output)
+
+	// Verify glog received our messages
+	if !strings.Contains(output, "INFO:") || !strings.Contains(output, "FIPS Mode") {
 		t.Errorf("Glog info level message missing: %s", output)
 	}
 }

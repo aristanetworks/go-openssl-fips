@@ -20,7 +20,7 @@ func TestTransportConcurrency(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("SSL Transport", func(t *testing.T) {
-		client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
+		client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getFipsDialOpts()...)
 		createRequests(t, ts, client)
 	})
 }

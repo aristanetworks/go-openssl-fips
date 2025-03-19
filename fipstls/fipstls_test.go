@@ -39,7 +39,7 @@ func initTest(t *testing.T) {
 	}
 }
 
-func getDialOpts() []fipstls.DialOption {
+func getFipsDialOpts() []fipstls.DialOption {
 	o := []fipstls.DialOption{}
 	if *enableClientTrace {
 		o = append(o, fipstls.WithLogging("", fipstls.LogLevelInfo, os.Stderr))

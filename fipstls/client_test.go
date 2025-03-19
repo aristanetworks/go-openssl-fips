@@ -28,7 +28,7 @@ func TestSSLClientGet(t *testing.T) {
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
+	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getFipsDialOpts()...)
 	trace := &httptrace.ClientTrace{
 		TLSHandshakeStart: func() {
 			t.Logf("[Client] Started handshake: url=%s", ts.URL)
@@ -99,7 +99,7 @@ func TestSSLClientPost(t *testing.T) {
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
+	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getFipsDialOpts()...)
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -147,7 +147,7 @@ func TestSSLClientPostTrace(t *testing.T) {
 	ts := testutils.NewServer(t, *enableServerTrace)
 	defer ts.Close()
 
-	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getDialOpts()...)
+	client := fipstls.NewClient(&fipstls.Config{CaFile: ts.CaFile}, getFipsDialOpts()...)
 
 	jsonData, _ := json.Marshal([]byte(`
 	{ "test": "key",
@@ -193,7 +193,7 @@ func TestRoundTripSSL(t *testing.T) {
 	t.Skip("local testing only")
 	initTest(t)
 	defer testutils.LeakCheck(t)
-	client := fipstls.NewClient(nil, getDialOpts()...)
+	client := fipstls.NewClient(nil, getFipsDialOpts()...)
 
 	// Add HTTP trace for debugging
 	trace := &httptrace.ClientTrace{
@@ -266,7 +266,7 @@ type Progress struct {
 func TestStreamJSON(t *testing.T) {
 	initTest(t)
 	defer testutils.LeakCheck(t)
-	client := fipstls.NewClient(nil, getDialOpts()...)
+	client := fipstls.NewClient(nil, getFipsDialOpts()...)
 	tests := []struct {
 		name          string
 		n             int
@@ -418,7 +418,7 @@ var (
 func BenchmarkClientSSL(b *testing.B) {
 	initTest(nil)
 	defer testutils.LeakCheck(b)
-	osslClient := fipstls.NewClient(nil, getDialOpts()...)
+	osslClient := fipstls.NewClient(nil, getFipsDialOpts()...)
 
 	b.ResetTimer()
 
